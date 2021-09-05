@@ -1,0 +1,5 @@
+.ccls-cache/
+build/RelWithDebInfo
+build/Release
+build/Debug
+compile_commands.json
