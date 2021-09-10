@@ -1,9 +1,15 @@
+#include "app.hpp"
 #include <iostream>
 
-using namespace std;
+int main() {
 
-int main(int argc, char *argv[]) {
+    try {
+        App app;
+        app.Run();
+    } catch (const std::exception& e) {
+        std::cerr << e.what() << std::endl;
+        return 1;
+    }
 
-    std::cout << "Hello world\n";
     return 0;
 }

@@ -16,6 +16,9 @@ conan_cmake_configure(
   glm/[>=0.9.9]
   spdlog/[>=1.8.5]
   boost/[>=1.76.0]
+  wayland/1.18.0
+  vulkan-loader/[>=1.2.172]
+  shaderc/[>=2021.1]
 
   OPTIONS
   spdlog:header_only=True
@@ -26,6 +29,6 @@ conan_cmake_configure(
 
 conan_cmake_install(PATH_OR_REFERENCE .
   BUILD missing
-  REMOTE conan-center
+  REMOTE conancenter
   SETTINGS ${settings}
   )
