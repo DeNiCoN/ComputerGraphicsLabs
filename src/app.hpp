@@ -26,6 +26,8 @@ private:
     void CreateLogicalDevice();
     void CreateSurface();
     void CreateSwapChain();
+    void CreateImageViews();
+    void CreateGraphicsPipeline();
     void Loop();
     void Terminate();
 
@@ -43,6 +45,7 @@ private:
     vk::Queue m_presentQueue;
     vk::SwapchainKHR m_swapChain;
     std::vector<vk::Image> m_swapChainImages;
+    std::vector<vk::ImageView> m_swapChainImageViews;
     vk::Format m_swapChainImageFormat;
     vk::Extent2D m_swapChainExtent;
 #ifdef NDEBUG

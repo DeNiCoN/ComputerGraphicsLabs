@@ -420,6 +420,34 @@ void App::CreateSwapChain()
     m_swapChainExtent = extent;
 }
 
+void App::CreateImageViews()
+{
+    m_swapChainImageViews.resize(m_swapChainImages.size());
+
+    for (size_t i = 0; i < m_swapChainImages.size(); i++)
+    {
+        vk::ImageViewCreateInfo createInfo;
+        createInfo.image = m_swapChainImages[i];
+        createInfo.viewType = vk::ImageViewType::e2D;
+        createInfo.format = m_swapChainImageFormat;
+
+        createInfo.components = vk::ComponentMapping();
+
+        createInfo.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+        createInfo.subresourceRange.baseMipLevel = 0;
+        createInfo.subresourceRange.levelCount = 1;
+        createInfo.subresourceRange.baseArrayLayer = 0;
+        createInfo.subresourceRange.layerCount = 1;
+
+        m_swapChainImageViews[i] = m_device.createImageView(createInfo);
+    }
+}
+
+void App::CreateGraphicsPipeline()
+{
+
+}
+
 void App::InitVulkan()
 {
     spdlog::info("Initializing Vulkan");
@@ -429,6 +457,8 @@ void App::InitVulkan()
     PickPhysicalDevice();
     CreateLogicalDevice();
     CreateSwapChain();
+    CreateImageViews();
+    CreateGraphicsPipeline();
 }
 
 void App::Loop()
