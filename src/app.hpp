@@ -13,11 +13,19 @@ public:
         Loop();
         Terminate();
     }
+
+    static const std::vector<const char*> s_validationLayers;
+    static const std::vector<const char*> s_deviceExtensions;
 private:
     void InitWindow();
     std::vector<const char*> GetRequiredExtensions();
     void CreateInstance();
     void InitVulkan();
+    void SetupDebugMessenger();
+    void PickPhysicalDevice();
+    void CreateLogicalDevice();
+    void CreateSurface();
+    void CreateSwapChain();
     void Loop();
     void Terminate();
 
@@ -26,11 +34,26 @@ private:
 
     GLFWwindow* m_window;
     vk::Instance m_instance;
+    vk::DispatchLoaderDynamic m_dispatcher;
+    vk::DebugUtilsMessengerEXT m_debugMessenger;
+    vk::PhysicalDevice m_physicalDevice;
+    vk::Device m_device;
+    vk::SurfaceKHR m_surface;
+    vk::Queue m_graphicsQueue;
+    vk::Queue m_presentQueue;
+    vk::SwapchainKHR m_swapChain;
+    std::vector<vk::Image> m_swapChainImages;
+    vk::Format m_swapChainImageFormat;
+    vk::Extent2D m_swapChainExtent;
 #ifdef NDEBUG
     bool m_validationLayers = false;
 #else
     bool m_validationLayers = true;
 #endif
 
-    static const std::vector<const char*> s_validationLayers;
+    bool IsDeviceSuitable(const vk::PhysicalDevice&);
+
+    static vk::SurfaceFormatKHR ChooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>&);
+    static vk::Extent2D ChooseSwapExtent(const vk::SurfaceCapabilitiesKHR&, GLFWwindow*);
+    static vk::PresentModeKHR ChooseSwapPresentMode(const std::vector<vk::PresentModeKHR>&);
 };
