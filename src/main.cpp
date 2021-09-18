@@ -1,7 +1,9 @@
 #include "app.hpp"
+#include "files.hpp"
 #include <iostream>
 
-int main() {
+int main(int argc, char* argv[]) {
+    Files::Init(argc, argv);
 
     try {
         App app;

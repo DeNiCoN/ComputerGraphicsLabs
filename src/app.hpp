@@ -28,6 +28,7 @@ private:
     void CreateSwapChain();
     void CreateImageViews();
     void CreateGraphicsPipeline();
+    vk::ShaderModule CreateShaderModule(const std::vector<uint32_t>&);
     void Loop();
     void Terminate();
 

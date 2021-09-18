@@ -6,6 +6,8 @@
 #include <set>
 #include <algorithm>
 #include <ranges>
+#include "shader_compiler.hpp"
+#include "files.hpp"
 
 const std::vector<const char*> App::s_validationLayers = {
     "VK_LAYER_KHRONOS_validation"
@@ -445,7 +447,40 @@ void App::CreateImageViews()
 
 void App::CreateGraphicsPipeline()
 {
+    auto vertModule = CreateShaderModule(
+        ShaderCompiler::CompileFromFile(
+            Files::Local("shaders/triangle.vert"),
+            shaderc_shader_kind::shaderc_glsl_vertex_shader));
 
+    auto fragModule =
+        CreateShaderModule(
+            ShaderCompiler::CompileFromFile(
+                Files::Local("shaders/triangle.frag"),
+                shaderc_shader_kind::shaderc_glsl_fragment_shader));
+
+    vk::PipelineShaderStageCreateInfo vertCreateInfo;
+    vertCreateInfo.stage = vk::ShaderStageFlagBits::eVertex;
+    vertCreateInfo.module = vertModule;
+    vertCreateInfo.pName = "main";
+
+    vk::PipelineShaderStageCreateInfo fragCreateInfo;
+    fragCreateInfo.stage = vk::ShaderStageFlagBits::eFragment;
+    fragCreateInfo.module = fragModule;
+    fragCreateInfo.pName = "main";
+
+    vk::PipelineShaderStageCreateInfo shaderStages[] = {vertCreateInfo, fragCreateInfo};
+}
+
+
+vk::ShaderModule App::CreateShaderModule(const std::vector<uint32_t>& data)
+{
+    vk::ShaderModuleCreateInfo createInfo;
+
+    createInfo.codeSize = 4*data.size();
+    createInfo.pCode = data.data();
+
+    vk::ShaderModule result = m_device.createShaderModule(createInfo);
+    return result;
 }
 
 void App::InitVulkan()
