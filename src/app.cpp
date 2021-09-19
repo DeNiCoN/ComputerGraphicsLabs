@@ -445,6 +445,47 @@ void App::CreateImageViews()
     }
 }
 
+vk::ShaderModule App::CreateShaderModule(const std::vector<uint32_t>& data)
+{
+    vk::ShaderModuleCreateInfo createInfo;
+
+    createInfo.codeSize = 4*data.size();
+    createInfo.pCode = data.data();
+
+    vk::ShaderModule result = m_device.createShaderModule(createInfo);
+    return result;
+}
+
+void App::CreateRenderPass()
+{
+    vk::AttachmentDescription colorAttachment;
+    colorAttachment.format = m_swapChainImageFormat;
+    colorAttachment.samples = vk::SampleCountFlagBits::e1;
+    colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+    colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;
+    colorAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
+    colorAttachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+    colorAttachment.initialLayout = vk::ImageLayout::eUndefined;
+    colorAttachment.finalLayout = vk::ImageLayout::ePresentSrcKHR;
+
+    vk::AttachmentReference colorAttachmentRef;
+    colorAttachmentRef.attachment = 0;
+    colorAttachmentRef.layout = vk::ImageLayout::eColorAttachmentOptimal;
+
+    vk::SubpassDescription subpass;
+    subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorAttachmentRef;
+
+    vk::RenderPassCreateInfo createInfo;
+    createInfo.attachmentCount = 1;
+    createInfo.pAttachments = &colorAttachment;
+    createInfo.subpassCount = 1;
+    createInfo.pSubpasses = &subpass;
+
+    m_renderPass = m_device.createRenderPass(createInfo);
+}
+
 void App::CreateGraphicsPipeline()
 {
     auto vertModule = CreateShaderModule(
@@ -469,18 +510,143 @@ void App::CreateGraphicsPipeline()
     fragCreateInfo.pName = "main";
 
     vk::PipelineShaderStageCreateInfo shaderStages[] = {vertCreateInfo, fragCreateInfo};
+
+    vk::PipelineVertexInputStateCreateInfo vertexInputInfo;
+    vertexInputInfo.vertexBindingDescriptionCount = 0;
+    vertexInputInfo.vertexAttributeDescriptionCount = 0;
+
+    vk::PipelineInputAssemblyStateCreateInfo inputAssemblyInfo;
+    inputAssemblyInfo.topology = vk::PrimitiveTopology::eTriangleList;
+    inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
+
+    vk::Viewport viewport(0, 0, m_swapChainExtent.width, m_swapChainExtent.height, 0, 1);
+    vk::Rect2D scissor({0, 0}, m_swapChainExtent);
+    vk::PipelineViewportStateCreateInfo viewportStateInfo;
+    viewportStateInfo.viewportCount = 1;
+    viewportStateInfo.pViewports = &viewport;
+    viewportStateInfo.scissorCount = 1;
+    viewportStateInfo.pScissors = &scissor;
+
+    vk::PipelineRasterizationStateCreateInfo rasterizerInfo;
+    rasterizerInfo.depthClampEnable = VK_FALSE;
+    rasterizerInfo.rasterizerDiscardEnable = VK_FALSE;
+    rasterizerInfo.polygonMode = vk::PolygonMode::eFill;
+    rasterizerInfo.lineWidth = 1.0f;
+    rasterizerInfo.cullMode = vk::CullModeFlagBits::eBack;
+    rasterizerInfo.frontFace = vk::FrontFace::eClockwise;
+    rasterizerInfo.depthBiasEnable = VK_FALSE;
+
+    vk::PipelineMultisampleStateCreateInfo multisamplingInfo{};
+    multisamplingInfo.sampleShadingEnable = VK_FALSE;
+    multisamplingInfo.rasterizationSamples = vk::SampleCountFlagBits::e1;
+
+    vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
+    colorBlendAttachment.colorWriteMask =
+        vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+        vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
+
+    colorBlendAttachment.blendEnable = VK_TRUE;
+    colorBlendAttachment.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
+    colorBlendAttachment.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+    colorBlendAttachment.colorBlendOp = vk::BlendOp::eAdd;
+    colorBlendAttachment.srcAlphaBlendFactor = vk::BlendFactor::eOne;
+    colorBlendAttachment.dstAlphaBlendFactor = vk::BlendFactor::eZero;
+    colorBlendAttachment.alphaBlendOp = vk::BlendOp::eAdd;
+
+    vk::PipelineColorBlendStateCreateInfo colorBlendingInfo;
+    colorBlendingInfo.logicOpEnable = VK_FALSE;
+    colorBlendingInfo.attachmentCount = 1;
+    colorBlendingInfo.pAttachments = &colorBlendAttachment;
+
+    vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
+
+    m_pipelineLayout = m_device.createPipelineLayout(pipelineLayoutInfo);
+
+    vk::GraphicsPipelineCreateInfo pipelineInfo;
+    pipelineInfo.stageCount = 2;
+    pipelineInfo.pStages = shaderStages;
+
+    pipelineInfo.pVertexInputState = &vertexInputInfo;
+    pipelineInfo.pInputAssemblyState = &inputAssemblyInfo;
+    pipelineInfo.pViewportState = &viewportStateInfo;
+    pipelineInfo.pRasterizationState = &rasterizerInfo;
+    pipelineInfo.pMultisampleState = &multisamplingInfo;
+    pipelineInfo.pColorBlendState = &colorBlendingInfo;
+    pipelineInfo.layout = m_pipelineLayout;
+    pipelineInfo.renderPass = m_renderPass;
+    pipelineInfo.subpass = 0;
+
+    m_graphicsPipeline = m_device.createGraphicsPipeline(VK_NULL_HANDLE, pipelineInfo).value;
 }
 
-
-vk::ShaderModule App::CreateShaderModule(const std::vector<uint32_t>& data)
+void App::CreateFramebuffers()
 {
-    vk::ShaderModuleCreateInfo createInfo;
+    m_swapChainFramebuffers.resize(m_swapChainImages.size());
 
-    createInfo.codeSize = 4*data.size();
-    createInfo.pCode = data.data();
+    for (int i = 0; i < m_swapChainFramebuffers.size(); i++)
+    {
+        vk::ImageView attachments[] = {
+            m_swapChainImageViews[i]
+        };
 
-    vk::ShaderModule result = m_device.createShaderModule(createInfo);
-    return result;
+        vk::FramebufferCreateInfo createInfo;
+        createInfo.renderPass = m_renderPass;
+        createInfo.attachmentCount = 1;
+        createInfo.pAttachments = attachments;
+        createInfo.layers = 1;
+        createInfo.width = m_swapChainExtent.width;
+        createInfo.height = m_swapChainExtent.height;
+
+        m_swapChainFramebuffers[i] = m_device.createFramebuffer(createInfo);
+    }
+}
+
+void App::CreateCommandPool()
+{
+    QueueFamilyIndices queueFamilyIndices =
+        FindQueueFamilies(m_physicalDevice, m_surface);
+
+    vk::CommandPoolCreateInfo poolInfo;
+    poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
+
+    m_commandPool = m_device.createCommandPool(poolInfo);
+}
+
+void App::CreateCommandBuffers()
+{
+    m_commandBuffers.resize(m_swapChainFramebuffers.size());
+
+    vk::CommandBufferAllocateInfo allocInfo;
+    allocInfo.commandPool = m_commandPool;
+    allocInfo.level = vk::CommandBufferLevel::ePrimary;
+    allocInfo.commandBufferCount = m_commandBuffers.size();
+
+    m_commandBuffers = m_device.allocateCommandBuffers(allocInfo);
+
+    for (int i = 0; i < m_commandBuffers.size(); i++)
+    {
+        m_commandBuffers[i].begin(vk::CommandBufferBeginInfo{});
+
+        vk::RenderPassBeginInfo renderPassInfo;
+        renderPassInfo.renderPass = m_renderPass;
+        renderPassInfo.framebuffer = m_swapChainFramebuffers[i];
+        renderPassInfo.renderArea.offset = vk::Offset2D{0, 0};
+        renderPassInfo.renderArea.extent = m_swapChainExtent;
+
+        vk::ClearValue clearColor{std::array<float, 4>
+                                       {0.0f, 0.0f, 0.0f, 1.0f}};
+        renderPassInfo.clearValueCount = 1;
+        renderPassInfo.pClearValues = &clearColor;
+
+        m_commandBuffers[i].beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
+
+        m_commandBuffers[i].bindPipeline(vk::PipelineBindPoint::eGraphics, m_graphicsPipeline);
+
+        m_commandBuffers[i].draw(3, 1, 0, 0);
+
+        m_commandBuffers[i].endRenderPass();
+        m_commandBuffers[i].end();
+    }
 }
 
 void App::InitVulkan()
@@ -493,7 +659,9 @@ void App::InitVulkan()
     CreateLogicalDevice();
     CreateSwapChain();
     CreateImageViews();
+    CreateRenderPass();
     CreateGraphicsPipeline();
+    CreateCommandPool();
 }
 
 void App::Loop()

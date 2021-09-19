@@ -27,7 +27,11 @@ private:
     void CreateSurface();
     void CreateSwapChain();
     void CreateImageViews();
+    void CreateRenderPass();
     void CreateGraphicsPipeline();
+    void CreateFramebuffers();
+    void CreateCommandPool();
+    void CreateCommandBuffers();
     vk::ShaderModule CreateShaderModule(const std::vector<uint32_t>&);
     void Loop();
     void Terminate();
@@ -49,6 +53,12 @@ private:
     std::vector<vk::ImageView> m_swapChainImageViews;
     vk::Format m_swapChainImageFormat;
     vk::Extent2D m_swapChainExtent;
+    vk::RenderPass m_renderPass;
+    vk::PipelineLayout m_pipelineLayout;
+    vk::Pipeline m_graphicsPipeline;
+    std::vector<vk::Framebuffer> m_swapChainFramebuffers;
+    vk::CommandPool m_commandPool;
+    std::vector<vk::CommandBuffer> m_commandBuffers;
 #ifdef NDEBUG
     bool m_validationLayers = false;
 #else
