@@ -153,6 +153,12 @@ namespace {
 
 }
 
+static void framebufferResizeCallback(GLFWwindow* window, int width, int height)
+{
+    auto app = reinterpret_cast<App*>(glfwGetWindowUserPointer(window));
+    app->m_framebufferResized = true;
+}
+
 void App::InitWindow()
 {
     if (!glfwInit())
@@ -166,7 +172,8 @@ void App::InitWindow()
     glfwSetErrorCallback(window_error_callback);
 
     m_window = glfwCreateWindow(m_width, m_height, "Vulkan", nullptr, nullptr);
-
+    glfwSetWindowUserPointer(m_window, this);
+    glfwSetFramebufferSizeCallback(m_window, framebufferResizeCallback);
 }
 
 std::vector<const char*> App::GetRequiredExtensions()
@@ -368,7 +375,7 @@ vk::PresentModeKHR App::ChooseSwapPresentMode(const std::vector<vk::PresentModeK
 {
     auto it = std::ranges::find_if(modes, [] (const vk::PresentModeKHR& mode)
     {
-        return mode == vk::PresentModeKHR::eImmediate;
+        return mode == vk::PresentModeKHR::eMailbox;
     });
 
     return it != modes.end() ? *it : vk::PresentModeKHR::eFifo;
@@ -413,7 +420,7 @@ void App::CreateSwapChain()
     createInfo.compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque;
     createInfo.presentMode = presentMode;
     createInfo.clipped = VK_TRUE;
-    createInfo.oldSwapchain = VK_NULL_HANDLE;
+    createInfo.oldSwapchain = m_swapChain;
 
     m_swapChain = m_device.createSwapchainKHR(createInfo);
 
@@ -474,14 +481,20 @@ void App::CreateRenderPass()
 
     vk::SubpassDescription subpass;
     subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &colorAttachmentRef;
+    subpass.setColorAttachments(colorAttachmentRef);
+
+    vk::SubpassDependency dependency;
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependency.dstSubpass = 0;
+    dependency.srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+    dependency.srcAccessMask = vk::AccessFlagBits::eNoneKHR;
+    dependency.dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+    dependency.dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
 
     vk::RenderPassCreateInfo createInfo;
-    createInfo.attachmentCount = 1;
-    createInfo.pAttachments = &colorAttachment;
-    createInfo.subpassCount = 1;
-    createInfo.pSubpasses = &subpass;
+    createInfo.setAttachments(colorAttachment);
+    createInfo.setSubpasses(subpass);
+    createInfo.setDependencies(dependency);
 
     m_renderPass = m_device.createRenderPass(createInfo);
 }
@@ -649,6 +662,23 @@ void App::CreateCommandBuffers()
     }
 }
 
+void App::CreateSyncObjects()
+{
+    m_imageAvailableSemaphores.resize(m_max_frames_in_flight);
+    m_renderFinishedSemaphores.resize(m_max_frames_in_flight);
+    m_inFlightFences.resize(m_max_frames_in_flight);
+    m_imagesInFlight.resize(m_swapChainImages.size());
+
+    vk::FenceCreateInfo fenceInfo;
+    fenceInfo.flags = vk::FenceCreateFlagBits::eSignaled;
+    for (size_t i = 0; i < m_max_frames_in_flight; i++)
+    {
+        m_imageAvailableSemaphores[i] = m_device.createSemaphore({});
+        m_renderFinishedSemaphores[i] = m_device.createSemaphore({});
+        m_inFlightFences[i] = m_device.createFence(fenceInfo);
+    }
+}
+
 void App::InitVulkan()
 {
     spdlog::info("Initializing Vulkan");
@@ -661,14 +691,92 @@ void App::InitVulkan()
     CreateImageViews();
     CreateRenderPass();
     CreateGraphicsPipeline();
+    CreateFramebuffers();
     CreateCommandPool();
+    CreateCommandBuffers();
+    CreateSyncObjects();
+}
+
+void App::DrawFrame()
+{
+    auto r = m_device.waitForFences(m_inFlightFences[m_currentFrame],
+                                    VK_TRUE, UINT64_MAX);
+    auto acquireResult = m_device.acquireNextImageKHR(
+        m_swapChain, UINT64_MAX, m_imageAvailableSemaphores[m_currentFrame]);
+
+    if (acquireResult.result == vk::Result::eErrorOutOfDateKHR)
+    {
+        RecreateSwapChain();
+        return;
+    }
+    else if (acquireResult.result != vk::Result::eSuccess &&
+             acquireResult.result != vk::Result::eSuboptimalKHR)
+    {
+        throw std::runtime_error("failed to acquire swap chain image!");
+    }
+
+    uint32_t imageIndex = acquireResult.value;
+
+    if (m_imagesInFlight[imageIndex].has_value())
+    {
+        auto re = m_device.waitForFences(m_imagesInFlight[imageIndex].value(),
+                                         VK_TRUE, UINT64_MAX);
+    }
+
+    m_imagesInFlight[imageIndex] = m_inFlightFences[m_currentFrame];
+
+    vk::SubmitInfo submitInfo;
+
+    std::array waitSemaphores {m_imageAvailableSemaphores[m_currentFrame]};
+    vk::PipelineStageFlags waitStages[] {
+        vk::PipelineStageFlagBits::eColorAttachmentOutput
+    };
+
+    submitInfo.setWaitSemaphores(waitSemaphores);
+    submitInfo.pWaitDstStageMask = waitStages;
+    submitInfo.setCommandBuffers(m_commandBuffers[imageIndex]);
+
+    std::array signalSemaphores {m_renderFinishedSemaphores[m_currentFrame]};
+    submitInfo.setSignalSemaphores(signalSemaphores);
+
+    m_device.resetFences(m_inFlightFences[m_currentFrame]);
+
+    m_graphicsQueue.submit(submitInfo, m_inFlightFences[m_currentFrame]);
+
+    std::array swapchains {m_swapChain};
+
+    vk::PresentInfoKHR presentInfo;
+    presentInfo.setWaitSemaphores(signalSemaphores);
+    presentInfo.setSwapchains(swapchains);
+    presentInfo.setImageIndices(imageIndex);
+
+    VkQueue q = m_graphicsQueue;
+    VkPresentInfoKHR p = presentInfo;
+    auto presentResult = vkQueuePresentKHR(q, &p);
+    if (presentResult == VK_SUBOPTIMAL_KHR ||
+        presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
+        m_framebufferResized)
+    {
+        m_framebufferResized = false;
+        RecreateSwapChain();
+        return;
+    }
+    else if (presentResult != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to present swap chain image!");
+    }
+
+    m_currentFrame = (m_currentFrame + 1) % m_max_frames_in_flight;
 }
 
 void App::Loop()
 {
     while (!glfwWindowShouldClose(m_window)) {
         glfwPollEvents();
+        DrawFrame();
     }
+
+    m_device.waitIdle();
 }
 
 void App::Terminate()
