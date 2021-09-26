@@ -36,6 +36,7 @@ private:
     void CreateCommandPool();
     void CreateCommandBuffers();
     void CreateSyncObjects();
+    void CreateVertexBuffer();
 
     void RecreateSwapChain()
     {
@@ -45,7 +46,7 @@ private:
             glfwGetFramebufferSize(m_window, &width, &height);
             glfwWaitEvents();
         }
-        m_device.waitIdle();
+        m_device->waitIdle();
 
         CreateSwapChain();
         CreateImageViews();
@@ -55,7 +56,7 @@ private:
         CreateCommandPool();
         CreateCommandBuffers();
     }
-    vk::ShaderModule CreateShaderModule(const std::vector<uint32_t>&);
+    vk::UniqueShaderModule CreateShaderModule(const std::vector<uint32_t>&);
     void Loop();
     void Terminate();
 
@@ -67,37 +68,44 @@ private:
     std::size_t m_currentFrame = 0;
     bool m_framebufferResized = false;
 
-    std::vector<vk::Semaphore> m_imageAvailableSemaphores;
-    std::vector<vk::Semaphore> m_renderFinishedSemaphores;
-    std::vector<vk::Fence> m_inFlightFences;
+    //NOTE: declaration order affects destruction order.
+    //Device should be destroyed last
+    vk::UniqueInstance m_instance;
+    vk::UniqueDevice m_device;
+
+    std::vector<vk::UniqueSemaphore> m_imageAvailableSemaphores;
+    std::vector<vk::UniqueSemaphore> m_renderFinishedSemaphores;
+    std::vector<vk::UniqueFence> m_inFlightFences;
     std::vector<std::optional<vk::Fence>> m_imagesInFlight;
 
     GLFWwindow* m_window;
-    vk::Instance m_instance;
     vk::DispatchLoaderDynamic m_dispatcher;
-    vk::DebugUtilsMessengerEXT m_debugMessenger;
+    vk::UniqueHandle<vk::DebugUtilsMessengerEXT,
+                     vk::DispatchLoaderDynamic> m_debugMessenger;
     vk::PhysicalDevice m_physicalDevice;
-    vk::Device m_device;
-    vk::SurfaceKHR m_surface;
+    vk::UniqueSurfaceKHR m_surface;
     vk::Queue m_graphicsQueue;
     vk::Queue m_presentQueue;
-    vk::SwapchainKHR m_swapChain;
+    vk::UniqueSwapchainKHR m_swapChain;
     std::vector<vk::Image> m_swapChainImages;
-    std::vector<vk::ImageView> m_swapChainImageViews;
+    std::vector<vk::UniqueImageView> m_swapChainImageViews;
     vk::Format m_swapChainImageFormat;
     vk::Extent2D m_swapChainExtent;
-    vk::RenderPass m_renderPass;
-    vk::PipelineLayout m_pipelineLayout;
-    vk::Pipeline m_graphicsPipeline;
-    std::vector<vk::Framebuffer> m_swapChainFramebuffers;
-    vk::CommandPool m_commandPool;
-    std::vector<vk::CommandBuffer> m_commandBuffers;
+    vk::UniqueRenderPass m_renderPass;
+    vk::UniquePipelineLayout m_pipelineLayout;
+    vk::UniquePipeline m_graphicsPipeline;
+    std::vector<vk::UniqueFramebuffer> m_swapChainFramebuffers;
+    vk::UniqueCommandPool m_commandPool;
+    std::vector<vk::UniqueCommandBuffer> m_commandBuffers;
+    vk::UniqueBuffer m_vertexBuffer;
+    vk::UniqueDeviceMemory m_vertexBufferMemory;
 #ifdef NDEBUG
     bool m_validationLayers = false;
 #else
     bool m_validationLayers = true;
 #endif
 
+    uint32_t FindMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties);
     bool IsDeviceSuitable(const vk::PhysicalDevice&);
 
     static vk::SurfaceFormatKHR ChooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>&);
