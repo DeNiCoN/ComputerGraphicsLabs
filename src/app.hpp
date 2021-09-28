@@ -38,6 +38,11 @@ private:
     void CreateSyncObjects();
     void CreateVertexBuffer();
 
+    void CreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
+                      vk::MemoryPropertyFlags properties,
+                      vk::UniqueBuffer&, vk::UniqueDeviceMemory&);
+    void CopyBuffer(vk::Buffer srcBuffer, vk::Buffer dstBuffer, vk::DeviceSize size);
+
     void RecreateSwapChain()
     {
         int width = 0, height = 0;
@@ -97,6 +102,8 @@ private:
     std::vector<vk::UniqueFramebuffer> m_swapChainFramebuffers;
     vk::UniqueCommandPool m_commandPool;
     std::vector<vk::UniqueCommandBuffer> m_commandBuffers;
+    vk::UniqueBuffer m_stagingBuffer;
+    vk::UniqueDeviceMemory m_stagingBufferMemory;
     vk::UniqueBuffer m_vertexBuffer;
     vk::UniqueDeviceMemory m_vertexBufferMemory;
 #ifdef NDEBUG
