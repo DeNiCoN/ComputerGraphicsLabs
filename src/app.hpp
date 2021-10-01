@@ -3,6 +3,7 @@
 #include <vulkan/vulkan.hpp>
 #include <memory>
 #include <optional>
+#include <glm/glm.hpp>
 
 static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
 
@@ -37,6 +38,11 @@ private:
     void CreateCommandBuffers();
     void CreateSyncObjects();
     void CreateVertexBuffer();
+    void CreateIndexBuffer();
+    void CreateDescriptorSetLayout();
+    void CreateUniformBuffers();
+    void CreateDescriptorPool();
+    void CreateDescriptorSets();
 
     void CreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
                       vk::MemoryPropertyFlags properties,
@@ -59,19 +65,33 @@ private:
         CreateGraphicsPipeline();
         CreateFramebuffers();
         CreateCommandPool();
+        CreateUniformBuffers();
+        CreateDescriptorPool();
+        CreateDescriptorSets();
         CreateCommandBuffers();
     }
+
     vk::UniqueShaderModule CreateShaderModule(const std::vector<uint32_t>&);
     void Loop();
     void Terminate();
 
+    void InitClock();
+    void UpdateClock();
     void DrawFrame();
+    void UpdateUniformBuffer(uint32_t currentImage);
 
     unsigned m_width = 800;
     unsigned m_height = 600;
     const int m_max_frames_in_flight = 2;
     std::size_t m_currentFrame = 0;
     bool m_framebufferResized = false;
+
+    struct UniformBufferObject
+    {
+        glm::vec2 offset {0, 0};
+    };
+
+    UniformBufferObject m_ubo;
 
     //NOTE: declaration order affects destruction order.
     //Device should be destroyed last
@@ -94,18 +114,23 @@ private:
     vk::UniqueSwapchainKHR m_swapChain;
     std::vector<vk::Image> m_swapChainImages;
     std::vector<vk::UniqueImageView> m_swapChainImageViews;
+    std::vector<vk::UniqueBuffer> m_uniformBuffers;
+    std::vector<vk::UniqueDeviceMemory> m_uniformBuffersMemory;
     vk::Format m_swapChainImageFormat;
     vk::Extent2D m_swapChainExtent;
     vk::UniqueRenderPass m_renderPass;
+    vk::UniqueDescriptorSetLayout m_descriptorSetLayout;
     vk::UniquePipelineLayout m_pipelineLayout;
     vk::UniquePipeline m_graphicsPipeline;
     std::vector<vk::UniqueFramebuffer> m_swapChainFramebuffers;
     vk::UniqueCommandPool m_commandPool;
     std::vector<vk::UniqueCommandBuffer> m_commandBuffers;
-    vk::UniqueBuffer m_stagingBuffer;
-    vk::UniqueDeviceMemory m_stagingBufferMemory;
     vk::UniqueBuffer m_vertexBuffer;
     vk::UniqueDeviceMemory m_vertexBufferMemory;
+    vk::UniqueBuffer m_indexBuffer;
+    vk::UniqueDeviceMemory m_indexBufferMemory;
+    vk::UniqueDescriptorPool m_descriptorPool;
+    std::vector<vk::DescriptorSet> m_descriptorSets;
 #ifdef NDEBUG
     bool m_validationLayers = false;
 #else

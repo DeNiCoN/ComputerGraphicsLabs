@@ -9,6 +9,9 @@
 #include "shader_compiler.hpp"
 #include "files.hpp"
 #include "vertex.hpp"
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <chrono>
 
 const std::vector<const char*> App::s_validationLayers = {
     "VK_LAYER_KHRONOS_validation"
@@ -577,6 +580,7 @@ void App::CreateGraphicsPipeline()
     colorBlendingInfo.pAttachments = &colorBlendAttachment;
 
     vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
+    pipelineLayoutInfo.setSetLayouts(*m_descriptorSetLayout);
 
     m_pipelineLayout = m_device->createPipelineLayoutUnique(pipelineLayoutInfo);
 
@@ -634,9 +638,14 @@ void App::CreateCommandPool()
 }
 
 const std::vector<Vertex> vertices = {
-    {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-    {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+    {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+    {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+    {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+    {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+};
+
+const std::vector<uint16_t> indices = {
+    0, 1, 2, 2, 3, 0
 };
 
 void App::CreateCommandBuffers()
@@ -673,8 +682,13 @@ void App::CreateCommandBuffers()
         std::array<vk::DeviceSize, 1> offsets = {0};
 
         m_commandBuffers[i]->bindVertexBuffers(0, vertexBuffers, offsets);
+        m_commandBuffers[i]->bindIndexBuffer(*m_indexBuffer, 0, vk::IndexType::eUint16);
 
-        m_commandBuffers[i]->draw(static_cast<uint32_t>(vertices.size()), 1, 0, 0);
+        m_commandBuffers[i]->bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                                                *m_pipelineLayout, 0, m_descriptorSets[i],
+                                                nullptr);
+
+        m_commandBuffers[i]->drawIndexed(static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
         m_commandBuffers[i]->endRenderPass();
         m_commandBuffers[i]->end();
@@ -715,17 +729,19 @@ uint32_t App::FindMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags proper
 void App::CreateVertexBuffer()
 {
     vk::DeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+    vk::UniqueBuffer stagingBuffer;
+    vk::UniqueDeviceMemory stagingBufferMemory;
     CreateBuffer(bufferSize,
                  vk::BufferUsageFlagBits::eTransferSrc,
                  vk::MemoryPropertyFlagBits::eHostVisible |
                  vk::MemoryPropertyFlagBits::eHostCoherent,
-                 m_stagingBuffer, m_stagingBufferMemory);
+                 stagingBuffer, stagingBufferMemory);
 
-    void* data = m_device->mapMemory(*m_stagingBufferMemory, 0, bufferSize);
+    void* data = m_device->mapMemory(*stagingBufferMemory, 0, bufferSize);
 
     memcpy(data, vertices.data(), bufferSize);
 
-    m_device->unmapMemory(*m_stagingBufferMemory);
+    m_device->unmapMemory(*stagingBufferMemory);
 
     CreateBuffer(bufferSize,
                  vk::BufferUsageFlagBits::eTransferDst |
@@ -733,7 +749,33 @@ void App::CreateVertexBuffer()
                  vk::MemoryPropertyFlagBits::eDeviceLocal,
                  m_vertexBuffer, m_vertexBufferMemory);
 
-    CopyBuffer(*m_stagingBuffer, *m_vertexBuffer, bufferSize);
+    CopyBuffer(*stagingBuffer, *m_vertexBuffer, bufferSize);
+}
+
+void App::CreateIndexBuffer()
+{
+    vk::DeviceSize bufferSize = sizeof(indices[0]) * indices.size();
+    vk::UniqueBuffer stagingBuffer;
+    vk::UniqueDeviceMemory stagingBufferMemory;
+    CreateBuffer(bufferSize,
+                 vk::BufferUsageFlagBits::eTransferSrc,
+                 vk::MemoryPropertyFlagBits::eHostVisible |
+                 vk::MemoryPropertyFlagBits::eHostCoherent,
+                 stagingBuffer, stagingBufferMemory);
+
+    void* data = m_device->mapMemory(*stagingBufferMemory, 0, bufferSize);
+
+    memcpy(data, indices.data(), bufferSize);
+
+    m_device->unmapMemory(*stagingBufferMemory);
+
+    CreateBuffer(bufferSize,
+                 vk::BufferUsageFlagBits::eTransferDst |
+                 vk::BufferUsageFlagBits::eIndexBuffer,
+                 vk::MemoryPropertyFlagBits::eDeviceLocal,
+                 m_indexBuffer, m_indexBufferMemory);
+
+    CopyBuffer(*stagingBuffer, *m_indexBuffer, bufferSize);
 }
 
 void App::CreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
@@ -787,6 +829,80 @@ void App::CopyBuffer(vk::Buffer srcBuffer, vk::Buffer dstBuffer, vk::DeviceSize 
     m_graphicsQueue.waitIdle();
 }
 
+void App::CreateDescriptorSetLayout()
+{
+    vk::DescriptorSetLayoutBinding uboLayoutBinding;
+    uboLayoutBinding.binding = 0;
+    uboLayoutBinding.descriptorType = vk::DescriptorType::eUniformBuffer;
+    uboLayoutBinding.descriptorCount = 1;
+    uboLayoutBinding.stageFlags = vk::ShaderStageFlagBits::eVertex;
+
+    vk::DescriptorSetLayoutCreateInfo layoutInfo;
+    layoutInfo.setBindings(uboLayoutBinding);
+
+    m_descriptorSetLayout = m_device->createDescriptorSetLayoutUnique(layoutInfo);
+}
+
+void App::CreateUniformBuffers()
+{
+    vk::DeviceSize bufferSize = sizeof(m_ubo);
+    m_uniformBuffers.resize(m_swapChainImages.size());
+    m_uniformBuffersMemory.resize(m_swapChainImages.size());
+
+    for (size_t i = 0; i < m_swapChainImages.size(); i++)
+    {
+        CreateBuffer(bufferSize, vk::BufferUsageFlagBits::eUniformBuffer,
+                     vk::MemoryPropertyFlagBits::eHostVisible |
+                     vk::MemoryPropertyFlagBits::eHostCoherent,
+                     m_uniformBuffers[i], m_uniformBuffersMemory[i]);
+    }
+}
+
+void App::CreateDescriptorPool()
+{
+    vk::DescriptorPoolSize poolSize;
+    poolSize.descriptorCount = m_swapChainImages.size();
+
+    vk::DescriptorPoolCreateInfo poolInfo;
+    poolInfo.setPoolSizes(poolSize);
+
+    poolInfo.maxSets = m_swapChainImages.size();
+    m_descriptorPool = m_device->createDescriptorPoolUnique(poolInfo);
+}
+
+void App::CreateDescriptorSets()
+{
+    std::vector<vk::DescriptorSetLayout> layouts(m_swapChainImages.size(),
+                                                 *m_descriptorSetLayout);
+
+    vk::DescriptorSetAllocateInfo allocInfo;
+
+    allocInfo.descriptorPool = *m_descriptorPool;
+    allocInfo.descriptorSetCount = m_swapChainImages.size();
+    allocInfo.pSetLayouts = layouts.data();
+
+    m_descriptorSets.resize(m_swapChainImages.size());
+    m_descriptorSets = m_device->allocateDescriptorSets(allocInfo);
+
+    for (size_t i = 0; i < m_swapChainImages.size(); i++)
+    {
+        vk::DescriptorBufferInfo bufferInfo;
+        bufferInfo.buffer = *m_uniformBuffers[i];
+        bufferInfo.offset = 0;
+        bufferInfo.range = sizeof(m_ubo);
+
+        vk::WriteDescriptorSet descriptorWrite;
+        descriptorWrite.dstSet = m_descriptorSets[i];
+        descriptorWrite.dstBinding = 0;
+        descriptorWrite.dstArrayElement = 0;
+        descriptorWrite.descriptorType = vk::DescriptorType::eUniformBuffer;
+        descriptorWrite.descriptorCount = 1;
+        descriptorWrite.setBufferInfo(bufferInfo);
+
+        m_device->updateDescriptorSets(descriptorWrite, nullptr);
+    }
+}
+
 void App::InitVulkan()
 {
     spdlog::info("Initializing Vulkan");
@@ -798,12 +914,29 @@ void App::InitVulkan()
     CreateSwapChain();
     CreateImageViews();
     CreateRenderPass();
+    CreateUniformBuffers();
+    CreateDescriptorSetLayout();
+    CreateDescriptorPool();
+    CreateDescriptorSets();
     CreateGraphicsPipeline();
     CreateFramebuffers();
     CreateCommandPool();
     CreateVertexBuffer();
+    CreateIndexBuffer();
     CreateCommandBuffers();
     CreateSyncObjects();
+}
+
+void App::UpdateUniformBuffer(uint32_t currentImage)
+{
+    static auto startTime = std::chrono::high_resolution_clock::now();
+
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+    void* data = m_device->mapMemory(*m_uniformBuffersMemory[currentImage], 0, sizeof(m_ubo));
+    memcpy(data, &m_ubo, sizeof(m_ubo));
+    m_device->unmapMemory(*m_uniformBuffersMemory[currentImage]);
 }
 
 void App::DrawFrame()
@@ -833,6 +966,8 @@ void App::DrawFrame()
     }
 
     m_imagesInFlight[imageIndex] = *m_inFlightFences[m_currentFrame];
+
+    UpdateUniformBuffer(imageIndex);
 
     vk::SubmitInfo submitInfo;
 
