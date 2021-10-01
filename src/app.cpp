@@ -11,6 +11,7 @@
 #include "vertex.hpp"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/norm.hpp>
 #include <chrono>
 
 const std::vector<const char*> App::s_validationLayers = {
@@ -929,17 +930,12 @@ void App::InitVulkan()
 
 void App::UpdateUniformBuffer(uint32_t currentImage)
 {
-    static auto startTime = std::chrono::high_resolution_clock::now();
-
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-
     void* data = m_device->mapMemory(*m_uniformBuffersMemory[currentImage], 0, sizeof(m_ubo));
     memcpy(data, &m_ubo, sizeof(m_ubo));
     m_device->unmapMemory(*m_uniformBuffersMemory[currentImage]);
 }
 
-void App::DrawFrame()
+void App::DrawFrame(float lag)
 {
     auto r = m_device->waitForFences(*m_inFlightFences[m_currentFrame],
                                     VK_TRUE, UINT64_MAX);
@@ -1013,11 +1009,53 @@ void App::DrawFrame()
     m_currentFrame = (m_currentFrame + 1) % m_max_frames_in_flight;
 }
 
+void App::InitClock()
+{
+    m_last_update = std::chrono::high_resolution_clock::now();
+}
+
+void App::UpdateClock()
+{
+    m_current_update = std::chrono::high_resolution_clock::now();
+    m_lag += m_current_update - m_last_update;
+    m_last_update = m_current_update;
+}
+
+void App::Update(float delta)
+{
+    glm::vec2 move {0, 0};
+    if (glfwGetKey(m_window, GLFW_KEY_W))
+        move += glm::vec2(0.0, -1);
+    if (glfwGetKey(m_window, GLFW_KEY_S))
+        move += glm::vec2(0.0, 1);
+    if (glfwGetKey(m_window, GLFW_KEY_D))
+        move += glm::vec2(1, 0.0);
+    if (glfwGetKey(m_window, GLFW_KEY_A))
+        move += glm::vec2(-1, 0.0);
+
+    if (glm::length2(move) > 0)
+        move = glm::normalize(move) * 0.4f;
+
+    m_ubo.offset += move * delta;
+}
+
 void App::Loop()
 {
+    using namespace std::chrono;
+    InitClock();
+
     while (!glfwWindowShouldClose(m_window)) {
         glfwPollEvents();
-        DrawFrame();
+
+        UpdateClock();
+        while (m_lag > m_desired_delta)
+        {
+            m_lag -= m_desired_delta;
+            Update(duration<float>(m_desired_delta).count());
+        }
+
+        DrawFrame(duration<float>(m_lag).count() /
+                  duration<float>(m_desired_delta).count());
     }
 
     m_device->waitIdle();

@@ -4,6 +4,7 @@
 #include <memory>
 #include <optional>
 #include <glm/glm.hpp>
+#include <chrono>
 
 static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
 
@@ -77,8 +78,17 @@ private:
 
     void InitClock();
     void UpdateClock();
-    void DrawFrame();
+    void Update(float delta);
+    void DrawFrame(float lag);
     void UpdateUniformBuffer(uint32_t currentImage);
+
+
+    using TimePoint = std::chrono::high_resolution_clock::time_point;
+    using Duration = std::chrono::high_resolution_clock::duration;
+    TimePoint m_last_update;
+    Duration m_desired_delta = std::chrono::duration_cast<Duration>(std::chrono::duration<double>(1.0/60.0));
+    Duration m_lag = std::chrono::high_resolution_clock::duration::zero();
+    TimePoint m_current_update;
 
     unsigned m_width = 800;
     unsigned m_height = 600;
