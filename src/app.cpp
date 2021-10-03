@@ -13,6 +13,9 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/norm.hpp>
 #include <chrono>
+#include <imgui.h>
+#include "bindings/imgui_impl_glfw.h"
+#include "bindings/imgui_impl_vulkan.h"
 
 const std::vector<const char*> App::s_validationLayers = {
     "VK_LAYER_KHRONOS_validation"
@@ -634,6 +637,7 @@ void App::CreateCommandPool()
 
     vk::CommandPoolCreateInfo poolInfo;
     poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
+    poolInfo.flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer;
 
     m_commandPool = m_device->createCommandPoolUnique(poolInfo);
 }
@@ -645,7 +649,7 @@ const std::vector<Vertex> vertices = {
     {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
 };
 
-const std::vector<uint16_t> indices = {
+const std::vector<uint16_t> g_indices = {
     0, 1, 2, 2, 3, 0
 };
 
@@ -659,41 +663,46 @@ void App::CreateCommandBuffers()
     allocInfo.commandBufferCount = m_commandBuffers.size();
 
     m_commandBuffers = m_device->allocateCommandBuffersUnique(allocInfo);
+}
 
-    for (int i = 0; i < m_commandBuffers.size(); i++)
-    {
-        m_commandBuffers[i]->begin(vk::CommandBufferBeginInfo{});
+void App::RecreateCommandBuffer(uint32_t i)
+{
+    m_commandBuffers[i]->reset();
+    vk::CommandBufferBeginInfo beginInfo;
+    beginInfo.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit;
+    m_commandBuffers[i]->begin(beginInfo);
 
-        vk::RenderPassBeginInfo renderPassInfo;
-        renderPassInfo.renderPass = *m_renderPass;
-        renderPassInfo.framebuffer = *m_swapChainFramebuffers[i];
-        renderPassInfo.renderArea.offset = vk::Offset2D{0, 0};
-        renderPassInfo.renderArea.extent = m_swapChainExtent;
+    vk::RenderPassBeginInfo renderPassInfo;
+    renderPassInfo.renderPass = *m_renderPass;
+    renderPassInfo.framebuffer = *m_swapChainFramebuffers[i];
+    renderPassInfo.renderArea.offset = vk::Offset2D{0, 0};
+    renderPassInfo.renderArea.extent = m_swapChainExtent;
 
-        vk::ClearValue clearColor{std::array<float, 4>
-                                       {0.0f, 0.0f, 0.0f, 1.0f}};
-        renderPassInfo.clearValueCount = 1;
-        renderPassInfo.pClearValues = &clearColor;
+    vk::ClearValue clearColor{std::array<float, 4>
+                              {0.0f, 0.0f, 0.0f, 1.0f}};
+    renderPassInfo.clearValueCount = 1;
+    renderPassInfo.pClearValues = &clearColor;
 
-        m_commandBuffers[i]->beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
+    m_commandBuffers[i]->beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
 
-        m_commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_graphicsPipeline);
+    m_commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_graphicsPipeline);
 
-        std::array<vk::Buffer, 1> vertexBuffers {*m_vertexBuffer};
-        std::array<vk::DeviceSize, 1> offsets = {0};
+    std::array<vk::Buffer, 1> vertexBuffers {*m_vertexBuffer};
+    std::array<vk::DeviceSize, 1> offsets = {0};
 
-        m_commandBuffers[i]->bindVertexBuffers(0, vertexBuffers, offsets);
-        m_commandBuffers[i]->bindIndexBuffer(*m_indexBuffer, 0, vk::IndexType::eUint16);
+    m_commandBuffers[i]->bindVertexBuffers(0, vertexBuffers, offsets);
+    m_commandBuffers[i]->bindIndexBuffer(*m_indexBuffer, 0, vk::IndexType::eUint16);
 
-        m_commandBuffers[i]->bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                                                *m_pipelineLayout, 0, m_descriptorSets[i],
-                                                nullptr);
+    m_commandBuffers[i]->bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                                            *m_pipelineLayout, 0, m_descriptorSets[i],
+                                            nullptr);
 
-        m_commandBuffers[i]->drawIndexed(static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+    m_commandBuffers[i]->drawIndexed(static_cast<uint32_t>(g_indices.size()), 1, 0, 0, 0);
 
-        m_commandBuffers[i]->endRenderPass();
-        m_commandBuffers[i]->end();
-    }
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *m_commandBuffers[i]);
+
+    m_commandBuffers[i]->endRenderPass();
+    m_commandBuffers[i]->end();
 }
 
 void App::CreateSyncObjects()
@@ -755,7 +764,7 @@ void App::CreateVertexBuffer()
 
 void App::CreateIndexBuffer()
 {
-    vk::DeviceSize bufferSize = sizeof(indices[0]) * indices.size();
+    vk::DeviceSize bufferSize = sizeof(g_indices[0]) * g_indices.size();
     vk::UniqueBuffer stagingBuffer;
     vk::UniqueDeviceMemory stagingBufferMemory;
     CreateBuffer(bufferSize,
@@ -766,7 +775,7 @@ void App::CreateIndexBuffer()
 
     void* data = m_device->mapMemory(*stagingBufferMemory, 0, bufferSize);
 
-    memcpy(data, indices.data(), bufferSize);
+    memcpy(data, g_indices.data(), bufferSize);
 
     m_device->unmapMemory(*stagingBufferMemory);
 
@@ -804,30 +813,13 @@ void App::CreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
 
 void App::CopyBuffer(vk::Buffer srcBuffer, vk::Buffer dstBuffer, vk::DeviceSize size)
 {
-    vk::CommandBufferAllocateInfo allocInfo;
-    allocInfo.level = vk::CommandBufferLevel::ePrimary;
-    allocInfo.commandBufferCount = 1;
-    allocInfo.setCommandPool(*m_commandPool);
+    ImmediateSubmit([&](vk::CommandBuffer& commandBuffer)
+    {
+        vk::BufferCopy copyRegion;
+        copyRegion.size = size;
 
-    auto commandBuffers = m_device->allocateCommandBuffersUnique(allocInfo);
-    auto commandBuffer = *commandBuffers.front();
-
-    vk::CommandBufferBeginInfo beginInfo;
-    beginInfo.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit;
-
-    commandBuffer.begin(beginInfo);
-    vk::BufferCopy copyRegion;
-    copyRegion.size = size;
-
-    commandBuffer.copyBuffer(srcBuffer, dstBuffer, copyRegion);
-
-    commandBuffer.end();
-
-    vk::SubmitInfo submitInfo;
-    submitInfo.setCommandBuffers(commandBuffer);
-
-    m_graphicsQueue.submit(submitInfo);
-    m_graphicsQueue.waitIdle();
+        commandBuffer.copyBuffer(srcBuffer, dstBuffer, copyRegion);
+    });
 }
 
 void App::CreateDescriptorSetLayout()
@@ -904,6 +896,65 @@ void App::CreateDescriptorSets()
     }
 }
 
+void App::InitImGui()
+{
+    //1: create descriptor pool for IMGUI
+    // the size of the pool is very oversize, but it's copied from imgui demo itself.
+    VkDescriptorPoolSize pool_sizes[] =
+        {
+            { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+            { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+            { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
+        };
+
+    VkDescriptorPoolCreateInfo pool_info = {};
+    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+    pool_info.maxSets = 1000;
+    pool_info.poolSizeCount = std::size(pool_sizes);
+    pool_info.pPoolSizes = pool_sizes;
+
+    m_imguiDescriptorPool = m_device->createDescriptorPoolUnique(pool_info);
+
+
+    // 2: initialize imgui library
+
+    //this initializes the core structures of imgui
+    ImGui::CreateContext();
+
+    //this initializes imgui for SDL
+    ImGui_ImplGlfw_InitForVulkan(m_window, true);
+
+    //this initializes imgui for Vulkan
+    ImGui_ImplVulkan_InitInfo init_info = {};
+    init_info.Instance = *m_instance;
+    init_info.PhysicalDevice = m_physicalDevice;
+    init_info.Device = *m_device;
+    init_info.Queue = m_graphicsQueue;
+    init_info.DescriptorPool = *m_imguiDescriptorPool;
+    init_info.MinImageCount = m_swapChainImages.size();
+    init_info.ImageCount = m_swapChainImages.size();
+    init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+
+    ImGui_ImplVulkan_Init(&init_info, *m_renderPass);
+
+    //execute a gpu command to upload imgui font textures
+    ImmediateSubmit([&](VkCommandBuffer cmd) {
+        ImGui_ImplVulkan_CreateFontsTexture(cmd);
+    });
+
+    //clear font textures from cpu data
+    ImGui_ImplVulkan_DestroyFontUploadObjects();
+}
+
 void App::InitVulkan()
 {
     spdlog::info("Initializing Vulkan");
@@ -937,6 +988,7 @@ void App::UpdateUniformBuffer(uint32_t currentImage)
 
 void App::DrawFrame(float lag)
 {
+    ImGui::Render();
     auto r = m_device->waitForFences(*m_inFlightFences[m_currentFrame],
                                     VK_TRUE, UINT64_MAX);
     auto acquireResult = m_device->acquireNextImageKHR(
@@ -964,6 +1016,7 @@ void App::DrawFrame(float lag)
     m_imagesInFlight[imageIndex] = *m_inFlightFences[m_currentFrame];
 
     UpdateUniformBuffer(imageIndex);
+    RecreateCommandBuffer(imageIndex);
 
     vk::SubmitInfo submitInfo;
 
@@ -1048,6 +1101,24 @@ void App::Loop()
         glfwPollEvents();
 
         UpdateClock();
+
+        ImGui_ImplGlfw_NewFrame();
+        ImGui_ImplVulkan_NewFrame();
+        ImGui::NewFrame();
+        ImGui::Begin("Shaders");
+        if (ImGui::Button("Recompile Shaders"))
+        {
+            m_device->waitIdle();
+            try {
+                CreateGraphicsPipeline();
+            }
+            catch(const vk::Error& e)
+            {
+                spdlog::error("Recreating pipeline failed: {}", e.what());
+            }
+        }
+        ImGui::End();
+
         while (m_lag > m_desired_delta)
         {
             m_lag -= m_desired_delta;
@@ -1063,6 +1134,7 @@ void App::Loop()
 
 void App::Terminate()
 {
+    ImGui_ImplVulkan_Shutdown();
     glfwDestroyWindow(m_window);
     glfwTerminate();
 }

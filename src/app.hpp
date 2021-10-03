@@ -5,6 +5,7 @@
 #include <optional>
 #include <glm/glm.hpp>
 #include <chrono>
+#include <concepts>
 
 static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
 
@@ -15,6 +16,7 @@ public:
     {
         InitWindow();
         InitVulkan();
+        InitImGui();
         Loop();
         Terminate();
     }
@@ -37,6 +39,7 @@ private:
     void CreateFramebuffers();
     void CreateCommandPool();
     void CreateCommandBuffers();
+    void RecreateCommandBuffer(uint32_t imageIndex);
     void CreateSyncObjects();
     void CreateVertexBuffer();
     void CreateIndexBuffer();
@@ -44,6 +47,7 @@ private:
     void CreateUniformBuffers();
     void CreateDescriptorPool();
     void CreateDescriptorSets();
+    void InitImGui();
 
     void CreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
                       vk::MemoryPropertyFlags properties,
@@ -81,6 +85,33 @@ private:
     void Update(float delta);
     void DrawFrame(float lag);
     void UpdateUniformBuffer(uint32_t currentImage);
+
+    template<std::invocable<vk::CommandBuffer&> T>
+    void ImmediateSubmit(T func)
+    {
+        vk::CommandBufferAllocateInfo allocInfo;
+        allocInfo.level = vk::CommandBufferLevel::ePrimary;
+        allocInfo.commandBufferCount = 1;
+        allocInfo.setCommandPool(*m_commandPool);
+
+        auto commandBuffers = m_device->allocateCommandBuffersUnique(allocInfo);
+        auto commandBuffer = *commandBuffers.front();
+
+        vk::CommandBufferBeginInfo beginInfo;
+        beginInfo.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit;
+
+        commandBuffer.begin(beginInfo);
+
+        func(commandBuffer);
+
+        commandBuffer.end();
+
+        vk::SubmitInfo submitInfo;
+        submitInfo.setCommandBuffers(commandBuffer);
+
+        m_graphicsQueue.submit(submitInfo);
+        m_graphicsQueue.waitIdle();
+    }
 
 
     using TimePoint = std::chrono::high_resolution_clock::time_point;
@@ -141,6 +172,7 @@ private:
     vk::UniqueDeviceMemory m_indexBufferMemory;
     vk::UniqueDescriptorPool m_descriptorPool;
     std::vector<vk::DescriptorSet> m_descriptorSets;
+    vk::UniqueDescriptorPool m_imguiDescriptorPool;
 #ifdef NDEBUG
     bool m_validationLayers = false;
 #else

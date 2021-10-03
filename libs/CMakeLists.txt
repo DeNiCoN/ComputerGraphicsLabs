@@ -19,12 +19,15 @@ conan_cmake_configure(
   wayland/1.18.0
   vulkan-loader/[>=1.2.172]
   shaderc/[>=2021.1]
+  imgui/[>=1.84.2]
 
   OPTIONS
   spdlog:header_only=True
   fmt:header_only=True
 
   GENERATORS cmake_find_package
+  IMPORTS "res/bindings, imgui_impl_glfw.* -> ${CMAKE_SOURCE_DIR}/src/bindings"
+  IMPORTS "res/bindings, imgui_impl_vulkan.* -> ${CMAKE_SOURCE_DIR}/src/bindings"
   )
 
 conan_cmake_install(PATH_OR_REFERENCE .

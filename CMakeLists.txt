@@ -12,6 +12,8 @@ set(CMAKE_MODULE_PATH ${CMAKE_BINARY_DIR}/libs)
 file(GLOB app_SRC
   "src/*.hpp"
   "src/*.cpp"
+  "src/bindings/*.hpp"
+  "src/bindings/*.cpp"
   )
 
 add_executable(app
@@ -24,6 +26,7 @@ find_package(spdlog REQUIRED)
 find_package(Vulkan REQUIRED)
 find_package(Boost COMPONENTS REQUIRED system)
 find_package(shaderc REQUIRED)
+find_package(imgui REQUIRED)
 
 target_link_libraries(app
   Vulkan::Vulkan
@@ -32,6 +35,7 @@ target_link_libraries(app
   glfw::glfw
   Boost::Boost
   shaderc::shaderc
+  imgui::imgui
   )
 
 target_include_directories(app PUBLIC src/)

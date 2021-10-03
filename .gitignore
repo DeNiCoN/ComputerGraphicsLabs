@@ -1,3 +1,4 @@
+src/bindings/
 .ccls-cache/
 build/RelWithDebInfo
 build/Release
