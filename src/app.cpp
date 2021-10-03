@@ -646,7 +646,7 @@ const std::vector<Vertex> vertices = {
     {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
     {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
     {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-    {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+    {{-0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}}
 };
 
 const std::vector<uint16_t> g_indices = {
@@ -679,7 +679,7 @@ void App::RecreateCommandBuffer(uint32_t i)
     renderPassInfo.renderArea.extent = m_swapChainExtent;
 
     vk::ClearValue clearColor{std::array<float, 4>
-                              {0.0f, 0.0f, 0.0f, 1.0f}};
+                              {1.0f, 1.0f, 1.0f, 1.0f}};
     renderPassInfo.clearValueCount = 1;
     renderPassInfo.pClearValues = &clearColor;
 
