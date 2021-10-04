@@ -4,13 +4,15 @@ layout(location = 0) in vec3 barycentric;
 
 layout(location = 0) out vec4 color;
 
+const float lineWidth = 1.4;
+const vec3 fillColor = vec3(0.0, 0.4, 0.05);
+
+float edgeFactor() {
+  vec3 d = fwidth(barycentric);
+  vec3 f = step(d * lineWidth, barycentric);
+  return min(min(f.x, f.y), f.z);
+}
+
 void main() {
-    if (barycentric.x < 0.01 || barycentric.y < 0.01 || barycentric.z < 0.01)
-    {
-        color = vec4(0.0, 0.0, 0.0, 1.0);
-    }
-    else
-    {
-        color = vec4(0.9, 0.4, 0.05, 1.0);
-    }
+  color = vec4(min(vec3(edgeFactor()), fillColor), 1.0);
 }
