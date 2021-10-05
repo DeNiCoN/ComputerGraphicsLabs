@@ -38,6 +38,7 @@ private:
     void CreateGraphicsPipeline();
     void CreateFramebuffers();
     void CreateCommandPool();
+    void CreateDepthResources();
     void CreateCommandBuffers();
     void RecreateCommandBuffer(uint32_t imageIndex);
     void CreateSyncObjects();
@@ -68,9 +69,10 @@ private:
         CreateImageViews();
         CreateRenderPass();
         CreateGraphicsPipeline();
+        CreateDepthResources();
         CreateFramebuffers();
-        CreateCommandPool();
         CreateUniformBuffers();
+        CreateCommandPool();
         CreateDescriptorPool();
         CreateDescriptorSets();
         CreateCommandBuffers();
@@ -157,6 +159,9 @@ private:
     std::vector<vk::UniqueImageView> m_swapChainImageViews;
     std::vector<vk::UniqueBuffer> m_uniformBuffers;
     std::vector<vk::UniqueDeviceMemory> m_uniformBuffersMemory;
+    vk::UniqueImage m_depthImage;
+    vk::UniqueDeviceMemory m_depthImageMemory;
+    vk::UniqueImageView m_depthImageView;
     vk::Format m_swapChainImageFormat;
     vk::Extent2D m_swapChainExtent;
     vk::UniqueRenderPass m_renderPass;
@@ -186,5 +191,30 @@ private:
     static vk::Extent2D ChooseSwapExtent(const vk::SurfaceCapabilitiesKHR&, GLFWwindow*);
     static vk::PresentModeKHR ChooseSwapPresentMode(const std::vector<vk::PresentModeKHR>&);
 
+    vk::Format FindSupportedFormat(const std::vector<vk::Format>&, vk::ImageTiling,
+                                   vk::FormatFeatureFlags);
+    vk::Format FindDepthFormat()
+    {
+        return FindSupportedFormat(
+            {vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint,
+             vk::Format::eD24UnormS8Uint}, vk::ImageTiling::eOptimal,
+            vk::FormatFeatureFlagBits::eDepthStencilAttachment);
+    }
+
+    bool hasStencilComponent(vk::Format format)
+    {
+        return format == vk::Format::eD32SfloatS8Uint
+            || format == vk::Format::eD24UnormS8Uint;
+    }
+
     friend void framebufferResizeCallback(GLFWwindow*, int, int);
+
+    void CreateImage(uint32_t width, uint32_t height, vk::Format format,
+                      vk::ImageTiling tiling, vk::ImageUsageFlags usage,
+                      vk::MemoryPropertyFlags properties,
+                      vk::UniqueImage& image,
+                      vk::UniqueDeviceMemory& imageMemory);
+
+    vk::UniqueImageView CreateImageView(vk::Image, vk::Format,
+                                        vk::ImageAspectFlags);
 };
