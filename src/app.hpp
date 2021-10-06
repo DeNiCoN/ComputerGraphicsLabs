@@ -6,8 +6,10 @@
 #include <glm/glm.hpp>
 #include <chrono>
 #include <concepts>
+#include "camera.hpp"
 
 static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
+static void cursorPositionCallback(GLFWwindow* window, double dx, double dy);
 
 class App
 {
@@ -63,6 +65,9 @@ private:
             glfwGetFramebufferSize(m_window, &width, &height);
             glfwWaitEvents();
         }
+
+        m_camera.SetPerspective(2.f, width / static_cast<float>(height),
+                                0.01, 100);
         m_device->waitIdle();
 
         CreateSwapChain();
@@ -131,7 +136,9 @@ private:
 
     struct UniformBufferObject
     {
-        glm::vec2 offset {0, 0};
+        alignas(16) glm::mat4 model;
+        alignas(16) glm::mat4 view;
+        alignas(16) glm::mat4 proj;
     };
 
     UniformBufferObject m_ubo;
@@ -208,6 +215,7 @@ private:
     }
 
     friend void framebufferResizeCallback(GLFWwindow*, int, int);
+    friend void cursorPositionCallback(GLFWwindow*, double, double);
 
     void CreateImage(uint32_t width, uint32_t height, vk::Format format,
                       vk::ImageTiling tiling, vk::ImageUsageFlags usage,
@@ -217,4 +225,6 @@ private:
 
     vk::UniqueImageView CreateImageView(vk::Image, vk::Format,
                                         vk::ImageAspectFlags);
+
+    Camera m_camera;
 };

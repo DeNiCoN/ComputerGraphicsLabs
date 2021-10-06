@@ -167,6 +167,31 @@ static void framebufferResizeCallback(GLFWwindow* window, int width, int height)
     app->m_framebufferResized = true;
 }
 
+static void cursorPositionCallback(GLFWwindow* window, double xpos, double ypos)
+{
+    static double px = xpos, py = ypos;
+
+    double dx = xpos - px;
+    double dy = ypos - py;
+
+    px = xpos;
+    py = ypos;
+
+    auto app = reinterpret_cast<App*>(glfwGetWindowUserPointer(window));
+
+    int state = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
+    if (state == GLFW_PRESS)
+    {
+        const glm::vec3 sideways = glm::normalize(glm::cross({0.f, 1.f, 0.f}, app->m_camera.direction));
+
+        app->m_camera.direction = glm::rotate(static_cast<float>(-dx * 0.001f),
+                                              glm::vec3{0, 1, 0}) * glm::vec4(app->m_camera.direction, 1.f);
+
+        app->m_camera.direction = glm::rotate(static_cast<float>(-dy * 0.001f),
+                                              sideways) * glm::vec4(app->m_camera.direction, 1.f);
+    }
+}
+
 void App::InitWindow()
 {
     if (!glfwInit())
@@ -182,6 +207,14 @@ void App::InitWindow()
     m_window = glfwCreateWindow(m_width, m_height, "Vulkan", nullptr, nullptr);
     glfwSetWindowUserPointer(m_window, this);
     glfwSetFramebufferSizeCallback(m_window, framebufferResizeCallback);
+    glfwSetCursorPosCallback(m_window, cursorPositionCallback);
+
+
+    m_camera.SetPerspective(2.f, m_width / static_cast<float>(m_height),
+                            0.01, 100);
+
+    m_camera.position = {1.f, 1.f, 1.f};
+    m_camera.direction = {-1.f, 0.f, 0.f};
 }
 
 std::vector<const char*> App::GetRequiredExtensions()
@@ -488,8 +521,8 @@ void App::CreateRenderPass()
     colorAttachmentRef.layout = vk::ImageLayout::eColorAttachmentOptimal;
 
     vk::AttachmentReference depthAttachmentRef;
-    colorAttachmentRef.attachment = 1;
-    colorAttachmentRef.layout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+    depthAttachmentRef.attachment = 1;
+    depthAttachmentRef.layout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
 
     vk::SubpassDescription subpass;
     subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
@@ -554,8 +587,8 @@ void App::CreateGraphicsPipeline()
     vertexInputInfo.setVertexAttributeDescriptions(attributeDescriptions);
 
     vk::PipelineInputAssemblyStateCreateInfo inputAssemblyInfo;
-    inputAssemblyInfo.topology = vk::PrimitiveTopology::eTriangleList;
-    inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
+    inputAssemblyInfo.topology = vk::PrimitiveTopology::eTriangleFan;
+    inputAssemblyInfo.primitiveRestartEnable = VK_TRUE;
 
     vk::Viewport viewport(0, 0, m_swapChainExtent.width, m_swapChainExtent.height, 0, 1);
     vk::Rect2D scissor({0, 0}, m_swapChainExtent);
@@ -663,36 +696,46 @@ void App::CreateCommandPool()
     m_commandPool = m_device->createCommandPoolUnique(poolInfo);
 }
 
+//TODO Dodecahedron
+//TODO Grid in shader
+//TODO Torus in shader
 const std::vector<Vertex> vertices = {
-    {{-6.f , -4.f}, {1.f, 0.f, 0.f}}, //0
-    {{-4.5f, -2.5f}, {0.f, 1.f, 0.f}}, //1
-    {{-6.f , -1.f}, {0.f, 0.f, 1.f}}, //2
-    {{-4.f , -3.f}, {0.f, 1.f, 0.f}}, //3
-    {{-4.f , -1.f}, {1.f, 0.f, 0.f}}, //4
-    {{-4.f ,  1.f}, {0.f, 1.f, 0.f}}, //5
-    {{-6.f ,  1.f}, {1.f, 0.f, 0.f}}, //6
-    {{-4.f ,  4.f}, {1.f, 0.f, 0.f}}, //7
-    {{-4.f ,  0.f}, {0.f, 1.f, 0.f}}, //8
-    {{0.f  ,  0.f}, {0.f, 0.f, 1.f}}, //9
-    {{-2.f ,  2.f}, {1.f, 0.f, 0.f}}, //10
-    {{2.f  ,  2.f}, {0.f, 1.f, 0.f}}, //11
-    {{4.f  ,  0.f}, {1.f, 0.f, 0.f}}, //12
-    {{4.f  ,  4.f}, {0.f, 1.f, 0.f}}, //13
-    {{5.f  , -2.f}, {0.f, 1.f, 0.f}}, //14
-    {{7.f  , -3.f}, {0.f, 0.f, 1.f}}, //15
-    {{6.f  , -1.f}, {0.f, 1.f, 0.f}}  //16
+    {{0, 0, 0}, {0, 0, 0}},
+    {{0, 0.618, 1.618}, {1.f, 0.f, 0.f}},
+    {{0, -0.618, 1.618}, {1.f, 0.f, 0.f}},
+    {{0, -0.618, -1.618}, {1.f, 0.f, 0.f}},
+    {{0, 0.618, -1.618}, {1.f, 0.f, 0.f}},
+    {{1.618, 0, 0.618}, {1.f, 0.f, 0.f}},
+    {{-1.618, 0, 0.618}, {1.f, 0.f, 0.f}},
+    {{-1.618, 0, -0.618}, {1.f, 0.f, 0.f}},
+    {{1.618, 0, -0.618}, {1.f, 0.f, 0.f}},
+    {{0.618, 1.618, 0}, {1.f, 0.f, 0.f}},
+    {{-0.618, 1.618, 0}, {1.f, 0.f, 0.f}},
+    {{-0.618, -1.618, 0}, {1.f, 0.f, 0.f}},
+    {{0.618, -1.618, 0}, {1.f, 0.f, 0.f}},
+    {{1, 1, 1}, {1.f, 0.f, 0.f}},
+    {{-1, 1, 1}, {1.f, 0.f, 0.f}},
+    {{-1, -1, 1}, {1.f, 0.f, 0.f}},
+    {{1, -1, 1}, {1.f, 0.f, 0.f}},
+    {{1, -1, -1}, {1.f, 0.f, 0.f}},
+    {{1, 1, -1}, {1.f, 0.f, 0.f}},
+    {{-1, 1, -1}, {1.f, 0.f, 0.f}},
+    {{-1, -1, -1}, {1.f, 0.f, 0.f}}
 };
 
 const std::vector<uint16_t> g_indices = {
-    0, 1, 2,
-    2, 3, 4,
-    2, 4, 5,
-    2, 5, 6,
-    7, 8, 9,
-    9, 11, 10,
-    9, 12, 13,
-    12, 14, 15,
-    12, 15, 16
+    1, 2, 16, 5, 13, UINT16_MAX,
+    1, 13, 9, 10, 14, UINT16_MAX,
+    1, 14, 6, 15, 2, UINT16_MAX,
+    2, 15, 11, 12, 16, UINT16_MAX,
+    3, 4, 18, 8, 17, UINT16_MAX,
+    3, 17, 12, 11, 20, UINT16_MAX,
+    3, 20, 7, 19, 4, UINT16_MAX,
+    19, 10, 9, 18, 4, UINT16_MAX,
+    16, 12, 17, 8, 5, UINT16_MAX,
+    5, 8, 18, 9, 13, UINT16_MAX,
+    14, 10, 19, 7, 6, UINT16_MAX,
+    6, 7, 20, 11, 15
 };
 
 void App::CreateCommandBuffers()
@@ -1202,20 +1245,41 @@ void App::UpdateClock()
 
 void App::Update(float delta)
 {
-    glm::vec2 move {0, 0};
+
+    int state = glfwGetMouseButton(m_window, GLFW_MOUSE_BUTTON_LEFT);
+    if (state == GLFW_PRESS)
+    {
+        glfwSetInputMode(m_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    }
+    else
+    {
+        glfwSetInputMode(m_window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+    }
+
+
+
+    glm::vec3 forward = glm::normalize(m_camera.direction);
+    glm::vec3 sideways = glm::normalize(glm::cross({0.f, 1.f, 0.f}, m_camera.direction));
+
+
+    glm::vec3 move = {0, 0, 0};
     if (glfwGetKey(m_window, GLFW_KEY_W))
-        move += glm::vec2(0.0, -1);
+        move += forward;
     if (glfwGetKey(m_window, GLFW_KEY_S))
-        move += glm::vec2(0.0, 1);
+        move += -forward;
     if (glfwGetKey(m_window, GLFW_KEY_D))
-        move += glm::vec2(1, 0.0);
+        move += -sideways;
     if (glfwGetKey(m_window, GLFW_KEY_A))
-        move += glm::vec2(-1, 0.0);
+        move += sideways;
 
     if (glm::length2(move) > 0)
-        move = glm::normalize(move) * 0.4f;
+        move = glm::normalize(move);
 
-    m_ubo.offset += move * delta;
+    m_camera.position += move * delta;
+    m_ubo.model = glm::identity<glm::mat4>();
+    glm::scale(m_ubo.model, glm::vec3{100.f, 100.f, 100.f});
+    m_ubo.view = m_camera.GetView();
+    m_ubo.proj = m_camera.GetProjection();
 }
 
 void App::Loop()
@@ -1232,6 +1296,9 @@ void App::Loop()
         ImGui_ImplVulkan_NewFrame();
         ImGui::NewFrame();
         ImGui::Begin("Shaders");
+        ImGui::Text("Average %.3f ms/frame (%.1f FPS)",
+                    1000.0f / ImGui::GetIO().Framerate,
+                    ImGui::GetIO().Framerate);
         if (ImGui::Button("Recompile Shaders"))
         {
             m_device->waitIdle();
