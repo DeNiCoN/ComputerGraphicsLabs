@@ -69,8 +69,16 @@ private:
             glfwWaitEvents();
         }
 
-        m_camera.SetPerspective(2.f, width / static_cast<float>(height),
-                                0.01, 100);
+        if (m_camera.GetProjectionType() == Projection::PERSPECTIVE)
+        {
+            m_camera.SetPerspective(m_fov, width / static_cast<float>(height),
+                                    0.01, 100);
+        }
+        else if (m_camera.GetProjectionType() == Projection::ORTHO)
+        {
+            m_camera.SetOrtho(m_width/100, m_height/100, 100);
+        }
+
         m_device->waitIdle();
 
         CreateSwapChain();
@@ -134,9 +142,12 @@ private:
 
     unsigned m_width = 800;
     unsigned m_height = 600;
+    float AspectRatio() const { return static_cast<float>(m_width) / m_height; }
     const int m_max_frames_in_flight = 2;
     std::size_t m_currentFrame = 0;
     bool m_framebufferResized = false;
+
+    float m_fov = 2.f;
 
     struct UniformBufferObject
     {

@@ -165,6 +165,8 @@ static void framebufferResizeCallback(GLFWwindow* window, int width, int height)
 {
     auto app = reinterpret_cast<App*>(glfwGetWindowUserPointer(window));
     app->m_framebufferResized = true;
+    app->m_width = width;
+    app->m_height = height;
 }
 
 static void cursorPositionCallback(GLFWwindow* window, double xpos, double ypos)
@@ -210,8 +212,7 @@ void App::InitWindow()
     glfwSetCursorPosCallback(m_window, cursorPositionCallback);
 
 
-    m_camera.SetPerspective(2.f, m_width / static_cast<float>(m_height),
-                            0.01, 100);
+    m_camera.SetPerspective(m_fov, AspectRatio(), 0.01, 100);
 
     m_camera.position = {0.f, 2.f, 5.f};
     m_camera.direction = {0.f, 0.f, -1.f};
@@ -679,7 +680,7 @@ void App::CreateGraphicsPipeline()
     vertexInputInfo.setVertexAttributeDescriptions(attributeDescriptions);
 
     vk::PipelineInputAssemblyStateCreateInfo inputAssemblyInfo;
-    inputAssemblyInfo.topology = vk::PrimitiveTopology::eTriangleFan;
+    inputAssemblyInfo.topology = vk::PrimitiveTopology::eLineStrip;
     inputAssemblyInfo.primitiveRestartEnable = VK_TRUE;
 
     vk::Viewport viewport(0, 0, m_swapChainExtent.width, m_swapChainExtent.height, 0, 1);
@@ -1378,7 +1379,16 @@ void App::Update(float delta)
         glfwSetInputMode(m_window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
     }
 
-    glm::vec3 forward = glm::normalize(m_camera.direction);
+    glm::vec3 forward;
+    if (m_camera.GetProjectionType() == Projection::PERSPECTIVE)
+    {
+        forward = glm::normalize(m_camera.direction);
+    }
+    else if (m_camera.GetProjectionType() == Projection::ORTHO)
+    {
+        forward = glm::normalize(
+            glm::vec3(m_camera.direction.x, 0, m_camera.direction.z));
+    }
     glm::vec3 sideways = glm::normalize(glm::cross({0.f, 1.f, 0.f}, m_camera.direction));
 
     glm::vec3 move = {0, 0, 0};
@@ -1447,15 +1457,25 @@ void App::Loop()
 
         if (ImGui::BeginCombo("Projection", Projection::ToString(m_camera.GetProjectionType())))
         {
-            for (const auto& name : Projection::projectionStrings)
+            if (ImGui::Selectable(Projection::ToString(Projection::ORTHO)))
             {
-                if (ImGui::Selectable(name))
-                {
+                m_camera.SetOrtho(m_width/100, m_height/100, 100);
+            }
 
-                }
+            if (ImGui::Selectable(Projection::ToString(Projection::PERSPECTIVE)))
+            {
+                m_camera.SetPerspective(m_fov, AspectRatio(), 0.01, 100);
             }
 
             ImGui::EndCombo();
+        }
+
+        if (m_camera.GetProjectionType() == Projection::PERSPECTIVE)
+        {
+            if (ImGui::SliderFloat("FOV", &m_fov, 0.01, std::numbers::pi - 0.2))
+            {
+                m_camera.SetPerspective(m_fov, AspectRatio(), 0.01, 100);
+            }
         }
         ImGui::End();
 

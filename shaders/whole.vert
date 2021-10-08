@@ -14,7 +14,7 @@ layout(binding = 0) uniform UniformBufferObject
 vec3 UnprojectPoint(float x, float y, float z, mat4 view, mat4 projection) {
     mat4 viewInv = inverse(view);
     mat4 projInv = inverse(projection);
-    vec4 unprojectedPoint =  viewInv * projInv * vec4(x, y, z, 1.0);
+    vec4 unprojectedPoint = viewInv * projInv * vec4(x, y, z, 1.0);
     return unprojectedPoint.xyz / unprojectedPoint.w;
 }
 
