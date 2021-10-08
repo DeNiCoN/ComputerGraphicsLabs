@@ -38,6 +38,9 @@ private:
     void CreateImageViews();
     void CreateRenderPass();
     void CreateGraphicsPipeline();
+    vk::UniquePipeline CreateWholeScreenPipeline(vk::ShaderModule vertexModule,
+                                                 vk::ShaderModule fragmentModule);
+    void CreateWholeScreenPipelines();
     void CreateFramebuffers();
     void CreateCommandPool();
     void CreateDepthResources();
@@ -74,6 +77,7 @@ private:
         CreateImageViews();
         CreateRenderPass();
         CreateGraphicsPipeline();
+        CreateWholeScreenPipelines();
         CreateDepthResources();
         CreateFramebuffers();
         CreateUniformBuffers();
@@ -175,6 +179,8 @@ private:
     vk::UniqueDescriptorSetLayout m_descriptorSetLayout;
     vk::UniquePipelineLayout m_pipelineLayout;
     vk::UniquePipeline m_graphicsPipeline;
+    vk::UniquePipeline m_gridPipeline;
+    vk::UniquePipeline m_torusPipeline;
     std::vector<vk::UniqueFramebuffer> m_swapChainFramebuffers;
     vk::UniqueCommandPool m_commandPool;
     std::vector<vk::UniqueCommandBuffer> m_commandBuffers;

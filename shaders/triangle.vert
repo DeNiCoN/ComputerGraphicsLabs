@@ -14,5 +14,6 @@ layout(location = 0) out vec3 bary;
 
 void main() {
     gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 1.0);
+    gl_Position.y = gl_Position.y;
     bary = barycentric;
 }

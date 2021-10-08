@@ -187,7 +187,7 @@ static void cursorPositionCallback(GLFWwindow* window, double xpos, double ypos)
         app->m_camera.direction = glm::rotate(static_cast<float>(-dx * 0.001f),
                                               glm::vec3{0, 1, 0}) * glm::vec4(app->m_camera.direction, 1.f);
 
-        app->m_camera.direction = glm::rotate(static_cast<float>(-dy * 0.001f),
+        app->m_camera.direction = glm::rotate(static_cast<float>(dy * 0.001f),
                                               sideways) * glm::vec4(app->m_camera.direction, 1.f);
     }
 }
@@ -213,8 +213,8 @@ void App::InitWindow()
     m_camera.SetPerspective(2.f, m_width / static_cast<float>(m_height),
                             0.01, 100);
 
-    m_camera.position = {1.f, 1.f, 1.f};
-    m_camera.direction = {-1.f, 0.f, 0.f};
+    m_camera.position = {0.f, 2.f, 5.f};
+    m_camera.direction = {0.f, 0.f, -1.f};
 }
 
 std::vector<const char*> App::GetRequiredExtensions()
@@ -353,6 +353,7 @@ void App::CreateLogicalDevice()
     }
 
     vk::PhysicalDeviceFeatures deviceFeatures;
+    deviceFeatures.fillModeNonSolid = VK_TRUE;
 
     vk::DeviceCreateInfo createInfo;
     createInfo.queueCreateInfoCount = queueCreateInfos.size();
@@ -553,6 +554,97 @@ void App::CreateRenderPass()
     m_renderPass = m_device->createRenderPassUnique(createInfo);
 }
 
+vk::UniquePipeline App::CreateWholeScreenPipeline(vk::ShaderModule vertexModule,
+                                                  vk::ShaderModule fragmentModule)
+{
+    vk::PipelineShaderStageCreateInfo vertCreateInfo;
+    vertCreateInfo.stage = vk::ShaderStageFlagBits::eVertex;
+    vertCreateInfo.module = vertexModule;
+    vertCreateInfo.pName = "main";
+
+    vk::PipelineShaderStageCreateInfo fragCreateInfo;
+    fragCreateInfo.stage = vk::ShaderStageFlagBits::eFragment;
+    fragCreateInfo.module = fragmentModule;
+    fragCreateInfo.pName = "main";
+
+    vk::PipelineShaderStageCreateInfo shaderStages[] = {vertCreateInfo, fragCreateInfo};
+
+    vk::PipelineVertexInputStateCreateInfo vertexInputInfo;
+    vertexInputInfo.vertexBindingDescriptionCount = 0;
+
+    vk::PipelineInputAssemblyStateCreateInfo inputAssemblyInfo;
+    inputAssemblyInfo.topology = vk::PrimitiveTopology::eTriangleList;
+    inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
+
+    vk::Viewport viewport(0, 0, m_swapChainExtent.width, m_swapChainExtent.height, 0, 1);
+    vk::Rect2D scissor({0, 0}, m_swapChainExtent);
+    vk::PipelineViewportStateCreateInfo viewportStateInfo;
+    viewportStateInfo.viewportCount = 1;
+    viewportStateInfo.pViewports = &viewport;
+    viewportStateInfo.scissorCount = 1;
+    viewportStateInfo.pScissors = &scissor;
+
+    vk::PipelineRasterizationStateCreateInfo rasterizerInfo;
+    rasterizerInfo.depthClampEnable = VK_FALSE;
+    rasterizerInfo.rasterizerDiscardEnable = VK_FALSE;
+    rasterizerInfo.polygonMode = vk::PolygonMode::eFill;
+    rasterizerInfo.lineWidth = 1.0f;
+    rasterizerInfo.cullMode = vk::CullModeFlagBits::eBack;
+    rasterizerInfo.frontFace = vk::FrontFace::eClockwise;
+    rasterizerInfo.depthBiasEnable = VK_FALSE;
+
+    vk::PipelineMultisampleStateCreateInfo multisamplingInfo{};
+    multisamplingInfo.sampleShadingEnable = VK_FALSE;
+    multisamplingInfo.rasterizationSamples = vk::SampleCountFlagBits::e1;
+
+    vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
+    colorBlendAttachment.colorWriteMask =
+        vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+        vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
+
+    colorBlendAttachment.blendEnable = VK_TRUE;
+    colorBlendAttachment.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
+    colorBlendAttachment.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+    colorBlendAttachment.colorBlendOp = vk::BlendOp::eAdd;
+    colorBlendAttachment.srcAlphaBlendFactor = vk::BlendFactor::eOne;
+    colorBlendAttachment.dstAlphaBlendFactor = vk::BlendFactor::eZero;
+    colorBlendAttachment.alphaBlendOp = vk::BlendOp::eAdd;
+
+    vk::PipelineColorBlendStateCreateInfo colorBlendingInfo;
+    colorBlendingInfo.logicOpEnable = VK_FALSE;
+    colorBlendingInfo.attachmentCount = 1;
+    colorBlendingInfo.pAttachments = &colorBlendAttachment;
+
+    vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
+    pipelineLayoutInfo.setSetLayouts(*m_descriptorSetLayout);
+
+    m_pipelineLayout = m_device->createPipelineLayoutUnique(pipelineLayoutInfo);
+
+    vk::PipelineDepthStencilStateCreateInfo depthStencil;
+    depthStencil.depthTestEnable = VK_TRUE;
+    depthStencil.depthWriteEnable = VK_TRUE;
+    depthStencil.depthCompareOp = vk::CompareOp::eLess;
+    depthStencil.depthBoundsTestEnable = VK_FALSE;
+    depthStencil.stencilTestEnable = VK_FALSE;
+
+    vk::GraphicsPipelineCreateInfo pipelineInfo;
+    pipelineInfo.stageCount = 2;
+    pipelineInfo.pStages = shaderStages;
+
+    pipelineInfo.pVertexInputState = &vertexInputInfo;
+    pipelineInfo.pInputAssemblyState = &inputAssemblyInfo;
+    pipelineInfo.pViewportState = &viewportStateInfo;
+    pipelineInfo.pRasterizationState = &rasterizerInfo;
+    pipelineInfo.pMultisampleState = &multisamplingInfo;
+    pipelineInfo.pColorBlendState = &colorBlendingInfo;
+    pipelineInfo.pDepthStencilState = &depthStencil;
+    pipelineInfo.layout = *m_pipelineLayout;
+    pipelineInfo.renderPass = *m_renderPass;
+    pipelineInfo.subpass = 0;
+
+    return m_device->createGraphicsPipelineUnique(VK_NULL_HANDLE, pipelineInfo).value;
+}
+
 void App::CreateGraphicsPipeline()
 {
     auto vertModule = CreateShaderModule(
@@ -601,10 +693,10 @@ void App::CreateGraphicsPipeline()
     vk::PipelineRasterizationStateCreateInfo rasterizerInfo;
     rasterizerInfo.depthClampEnable = VK_FALSE;
     rasterizerInfo.rasterizerDiscardEnable = VK_FALSE;
-    rasterizerInfo.polygonMode = vk::PolygonMode::eFill;
+    rasterizerInfo.polygonMode = vk::PolygonMode::eLine;
     rasterizerInfo.lineWidth = 1.0f;
     rasterizerInfo.cullMode = vk::CullModeFlagBits::eBack;
-    rasterizerInfo.frontFace = vk::FrontFace::eClockwise;
+    rasterizerInfo.frontFace = vk::FrontFace::eCounterClockwise;
     rasterizerInfo.depthBiasEnable = VK_FALSE;
 
     vk::PipelineMultisampleStateCreateInfo multisamplingInfo{};
@@ -696,7 +788,6 @@ void App::CreateCommandPool()
     m_commandPool = m_device->createCommandPoolUnique(poolInfo);
 }
 
-//TODO Dodecahedron
 //TODO Grid in shader
 //TODO Torus in shader
 const std::vector<Vertex> vertices = {
@@ -786,7 +877,15 @@ void App::RecreateCommandBuffer(uint32_t i)
                                             *m_pipelineLayout, 0, m_descriptorSets[i],
                                             nullptr);
 
+    m_commandBuffers[i]->bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                                            *m_pipelineLayout, 0, m_descriptorSets[i],
+                                            nullptr);
+
     m_commandBuffers[i]->drawIndexed(static_cast<uint32_t>(g_indices.size()), 1, 0, 0, 0);
+
+    m_commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_gridPipeline);
+
+    m_commandBuffers[i]->draw(3, 1, 0, 0);
 
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *m_commandBuffers[i]);
 
@@ -917,7 +1016,7 @@ void App::CreateDescriptorSetLayout()
     uboLayoutBinding.binding = 0;
     uboLayoutBinding.descriptorType = vk::DescriptorType::eUniformBuffer;
     uboLayoutBinding.descriptorCount = 1;
-    uboLayoutBinding.stageFlags = vk::ShaderStageFlagBits::eVertex;
+    uboLayoutBinding.stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
 
     vk::DescriptorSetLayoutCreateInfo layoutInfo;
     layoutInfo.setBindings(uboLayoutBinding);
@@ -1044,6 +1143,28 @@ void App::InitImGui()
     ImGui_ImplVulkan_DestroyFontUploadObjects();
 }
 
+void App::CreateWholeScreenPipelines()
+{
+    auto whole = CreateShaderModule(
+        ShaderCompiler::CompileFromFile(
+            Files::Local("shaders/whole.vert"),
+            shaderc_shader_kind::shaderc_glsl_vertex_shader));
+
+    auto grid = CreateShaderModule(
+        ShaderCompiler::CompileFromFile(
+            Files::Local("shaders/grid.frag"),
+            shaderc_shader_kind::shaderc_glsl_fragment_shader));
+
+    m_gridPipeline = CreateWholeScreenPipeline(*whole, *grid);
+
+    //auto torus = CreateShaderModule(
+    //    ShaderCompiler::CompileFromFile(
+    //        Files::Local("shaders/torus.frag"),
+    //        shaderc_shader_kind::shaderc_glsl_fragment_shader));
+
+    //m_torusPipeline = CreateWholeScreenPipeline(*whole, *torus);
+}
+
 void App::InitVulkan()
 {
     spdlog::info("Initializing Vulkan");
@@ -1060,6 +1181,7 @@ void App::InitVulkan()
     CreateDescriptorPool();
     CreateDescriptorSets();
     CreateGraphicsPipeline();
+    CreateWholeScreenPipelines();
     CreateCommandPool();
     CreateDepthResources();
     CreateFramebuffers();
@@ -1256,11 +1378,8 @@ void App::Update(float delta)
         glfwSetInputMode(m_window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
     }
 
-
-
     glm::vec3 forward = glm::normalize(m_camera.direction);
     glm::vec3 sideways = glm::normalize(glm::cross({0.f, 1.f, 0.f}, m_camera.direction));
-
 
     glm::vec3 move = {0, 0, 0};
     if (glfwGetKey(m_window, GLFW_KEY_W))
@@ -1277,7 +1396,8 @@ void App::Update(float delta)
 
     m_camera.position += move * delta;
     m_ubo.model = glm::identity<glm::mat4>();
-    glm::scale(m_ubo.model, glm::vec3{100.f, 100.f, 100.f});
+    m_ubo.model = glm::translate(m_ubo.model, glm::vec3{3, 2, 0});
+    m_ubo.model = glm::scale(m_ubo.model, glm::vec3{1.f, 1.f, 1.f});
     m_ubo.view = m_camera.GetView();
     m_ubo.proj = m_camera.GetProjection();
 }
@@ -1302,13 +1422,40 @@ void App::Loop()
         if (ImGui::Button("Recompile Shaders"))
         {
             m_device->waitIdle();
-            try {
+            try
+            {
                 CreateGraphicsPipeline();
+                CreateWholeScreenPipelines();
             }
             catch(const vk::Error& e)
             {
                 spdlog::error("Recreating pipeline failed: {}", e.what());
             }
+        }
+        ImGui::End();
+
+        ImGui::Begin("Camera");
+        ImGui::Text("Position %.3f %.3f %.3f",
+                    m_camera.position.x,
+                    m_camera.position.y,
+                    m_camera.position.z);
+
+        ImGui::Text("Direction %.3f %.3f %.3f",
+                    m_camera.direction.x,
+                    m_camera.direction.y,
+                    m_camera.direction.z);
+
+        if (ImGui::BeginCombo("Projection", Projection::ToString(m_camera.GetProjectionType())))
+        {
+            for (const auto& name : Projection::projectionStrings)
+            {
+                if (ImGui::Selectable(name))
+                {
+
+                }
+            }
+
+            ImGui::EndCombo();
         }
         ImGui::End();
 
