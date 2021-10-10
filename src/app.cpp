@@ -884,8 +884,10 @@ void App::RecreateCommandBuffer(uint32_t i)
 
     m_commandBuffers[i]->drawIndexed(static_cast<uint32_t>(g_indices.size()), 1, 0, 0, 0);
 
-    m_commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_gridPipeline);
+    m_commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_torusPipeline);
+    m_commandBuffers[i]->draw(3, 1, 0, 0);
 
+    m_commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_gridPipeline);
     m_commandBuffers[i]->draw(3, 1, 0, 0);
 
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *m_commandBuffers[i]);
@@ -1158,12 +1160,12 @@ void App::CreateWholeScreenPipelines()
 
     m_gridPipeline = CreateWholeScreenPipeline(*whole, *grid);
 
-    //auto torus = CreateShaderModule(
-    //    ShaderCompiler::CompileFromFile(
-    //        Files::Local("shaders/torus.frag"),
-    //        shaderc_shader_kind::shaderc_glsl_fragment_shader));
+    auto torus = CreateShaderModule(
+        ShaderCompiler::CompileFromFile(
+            Files::Local("shaders/torus.frag"),
+            shaderc_shader_kind::shaderc_glsl_fragment_shader));
 
-    //m_torusPipeline = CreateWholeScreenPipeline(*whole, *torus);
+    m_torusPipeline = CreateWholeScreenPipeline(*whole, *torus);
 }
 
 void App::InitVulkan()
