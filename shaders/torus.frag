@@ -21,13 +21,8 @@ float Torus(vec3 p, vec2 r){
 
 }
 
-float displacement(vec3 p)
-{
-    return p.x;
-}
-
 float surf(vec3 p) {
-    float d = abs(sin(p.x) + cos(p.z) + p.y) - 0.05;
+    float d = abs(sin(p.x) + cos(p.z) + p.y) - 0.01;
 
     return (d/1.71);
 }
@@ -79,11 +74,11 @@ float GetLight(vec3 p) {
     vec3 l = normalize(lightPos-p);
     vec3 n = GetNormal(p);
 
-    float dif = clamp(dot(n, l), 0., 1.);
+    float dif = clamp(dot(n, l), 0.0, 1.);
     float d = RayMarch(p+n*SURF_DIST*2., l);
     if(d<length(lightPos-p)) dif *= .1;
 
-    return dif;
+    return max(dif, 0.1);
 }
 
 float computeDepth(vec3 pos) {
@@ -103,9 +98,9 @@ void main()
     vec3 p = ro + rd * d;
 
     float dif = GetLight(p);
-    col = vec3(max(dif, 0.01));
+    col = vec3(dif);
 
-
+    //discard;
     fragColor = vec4(col, float(d < MAX_DIST));
     gl_FragDepth = computeDepth(p);
 }
