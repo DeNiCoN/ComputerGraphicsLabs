@@ -7,103 +7,25 @@
 #include <chrono>
 #include <concepts>
 #include "camera.hpp"
+#include <spdlog/spdlog.h>
 
-static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
-static void cursorPositionCallback(GLFWwindow* window, double dx, double dy);
-
-class App
+class Engine
 {
 public:
-    void Run()
-    {
-        InitWindow();
-        InitVulkan();
-        InitImGui();
-        Loop();
-        Terminate();
-    }
+    void Init(GLFWwindow* window);
+    void DrawFrame(float lag);
+    void Terminate();
+    void Resize() { m_framebufferResized = true; }
 
     static const std::vector<const char*> s_validationLayers;
     static const std::vector<const char*> s_deviceExtensions;
-private:
-    void InitWindow();
-    std::vector<const char*> GetRequiredExtensions();
-    void CreateInstance();
-    void InitVulkan();
-    void SetupDebugMessenger();
-    void PickPhysicalDevice();
-    void CreateLogicalDevice();
-    void CreateSurface();
-    void CreateSwapChain();
-    void CreateImageViews();
-    void CreateRenderPass();
-    void CreateGraphicsPipeline();
-    vk::UniquePipeline CreateWholeScreenPipeline(vk::ShaderModule vertexModule,
-                                                 vk::ShaderModule fragmentModule);
-    void CreateWholeScreenPipelines();
-    void CreateFramebuffers();
-    void CreateCommandPool();
-    void CreateDepthResources();
-    void CreateCommandBuffers();
-    void RecreateCommandBuffer(uint32_t imageIndex);
-    void CreateSyncObjects();
-    void CreateVertexBuffer();
-    void CreateIndexBuffer();
-    void CreateDescriptorSetLayout();
-    void CreateUniformBuffers();
-    void CreateDescriptorPool();
-    void CreateDescriptorSets();
-    void InitImGui();
 
-    void CreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
-                      vk::MemoryPropertyFlags properties,
-                      vk::UniqueBuffer&, vk::UniqueDeviceMemory&);
-    void CopyBuffer(vk::Buffer srcBuffer, vk::Buffer dstBuffer, vk::DeviceSize size);
-
-    void RecreateSwapChain()
-    {
-        int width = 0, height = 0;
-        glfwGetFramebufferSize(m_window, &width, &height);
-        while (width == 0 || height == 0) {
-            glfwGetFramebufferSize(m_window, &width, &height);
-            glfwWaitEvents();
-        }
-
-        if (m_camera.GetProjectionType() == Projection::PERSPECTIVE)
-        {
-            m_camera.SetPerspective(m_fov, width / static_cast<float>(height),
-                                    0.01, 100);
-        }
-        else if (m_camera.GetProjectionType() == Projection::ORTHO)
-        {
-            m_camera.SetOrtho(m_width/100, m_height/100, 100);
-        }
-
-        m_device->waitIdle();
-
-        CreateSwapChain();
-        CreateImageViews();
-        CreateRenderPass();
-        CreateGraphicsPipeline();
-        CreateWholeScreenPipelines();
-        CreateDepthResources();
-        CreateFramebuffers();
-        CreateUniformBuffers();
-        CreateCommandPool();
-        CreateDescriptorPool();
-        CreateDescriptorSets();
-        CreateCommandBuffers();
-    }
-
-    vk::UniqueShaderModule CreateShaderModule(const std::vector<uint32_t>&);
-    void Loop();
-    void Terminate();
-
-    void InitClock();
-    void UpdateClock();
-    void Update(float delta);
-    void DrawFrame(float lag);
-    void UpdateUniformBuffer(uint32_t currentImage);
+    vk::Instance GetInstance() { return *m_instance; }
+    vk::PhysicalDevice GetPhysicalDevice() const { return m_physicalDevice; }
+    vk::Device GetDevice() { return *m_device; }
+    vk::Queue GetGraphicsQueue() { return m_graphicsQueue; }
+    std::size_t GetImageCount() const { return m_swapChainImages.size(); }
+    vk::RenderPass GetRenderPass() { return *m_renderPass; }
 
     template<std::invocable<vk::CommandBuffer&> T>
     void ImmediateSubmit(T func)
@@ -131,23 +53,8 @@ private:
         m_graphicsQueue.submit(submitInfo);
         m_graphicsQueue.waitIdle();
     }
-
-
-    using TimePoint = std::chrono::high_resolution_clock::time_point;
-    using Duration = std::chrono::high_resolution_clock::duration;
-    TimePoint m_last_update;
-    Duration m_desired_delta = std::chrono::duration_cast<Duration>(std::chrono::duration<double>(1.0/60.0));
-    Duration m_lag = std::chrono::high_resolution_clock::duration::zero();
-    TimePoint m_current_update;
-
-    unsigned m_width = 800;
-    unsigned m_height = 600;
-    float AspectRatio() const { return static_cast<float>(m_width) / m_height; }
-    const int m_max_frames_in_flight = 2;
-    std::size_t m_currentFrame = 0;
-    bool m_framebufferResized = false;
-
-    float m_fov = 2.f;
+    void CreateGraphicsPipeline();
+    void CreateWholeScreenPipelines();
 
     struct UniformBufferObject
     {
@@ -157,6 +64,72 @@ private:
     };
 
     UniformBufferObject m_ubo;
+private:
+    std::vector<const char*> GetRequiredExtensions();
+    void CreateInstance();
+    void SetupDebugMessenger();
+    void PickPhysicalDevice();
+    void CreateLogicalDevice();
+    void CreateSurface();
+    void CreateSwapChain();
+    void CreateImageViews();
+    void CreateRenderPass();
+    vk::UniquePipeline CreateWholeScreenPipeline(vk::ShaderModule vertexModule,
+                                                 vk::ShaderModule fragmentModule);
+    void CreateFramebuffers();
+    void CreateCommandPool();
+    void CreateDepthResources();
+    void CreateCommandBuffers();
+    void RecreateCommandBuffer(uint32_t imageIndex);
+    void CreateSyncObjects();
+    void CreateVertexBuffer();
+    void CreateIndexBuffer();
+    void CreateDescriptorSetLayout();
+    void CreateUniformBuffers();
+    void CreateDescriptorPool();
+    void CreateDescriptorSets();
+
+    void CreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
+                      vk::MemoryPropertyFlags properties,
+                      vk::UniqueBuffer&, vk::UniqueDeviceMemory&);
+    void CopyBuffer(vk::Buffer srcBuffer, vk::Buffer dstBuffer, vk::DeviceSize size);
+
+    void RecreateSwapChain()
+    {
+        int width = 0, height = 0;
+        glfwGetFramebufferSize(m_window, &width, &height);
+        while (width == 0 || height == 0) {
+            glfwGetFramebufferSize(m_window, &width, &height);
+            glfwWaitEvents();
+        }
+
+        m_device->waitIdle();
+
+        CreateSwapChain();
+        CreateImageViews();
+        CreateRenderPass();
+        CreateGraphicsPipeline();
+        CreateWholeScreenPipelines();
+        CreateDepthResources();
+        CreateFramebuffers();
+        CreateUniformBuffers();
+        CreateCommandPool();
+        CreateDescriptorPool();
+        CreateDescriptorSets();
+        CreateCommandBuffers();
+    }
+
+    vk::UniqueShaderModule CreateShaderModule(const std::vector<uint32_t>&);
+    void Loop();
+
+    void UpdateUniformBuffer(uint32_t currentImage);
+
+
+    const int m_max_frames_in_flight = 2;
+    std::size_t m_currentFrame = 0;
+    bool m_framebufferResized = false;
+
+    GLFWwindow* m_window;
 
     //NOTE: declaration order affects destruction order.
     //Device should be destroyed last
@@ -168,7 +141,6 @@ private:
     std::vector<vk::UniqueFence> m_inFlightFences;
     std::vector<std::optional<vk::Fence>> m_imagesInFlight;
 
-    GLFWwindow* m_window;
     vk::DispatchLoaderDynamic m_dispatcher;
     vk::UniqueHandle<vk::DebugUtilsMessengerEXT,
                      vk::DispatchLoaderDynamic> m_debugMessenger;
@@ -231,9 +203,6 @@ private:
             || format == vk::Format::eD24UnormS8Uint;
     }
 
-    friend void framebufferResizeCallback(GLFWwindow*, int, int);
-    friend void cursorPositionCallback(GLFWwindow*, double, double);
-
     void CreateImage(uint32_t width, uint32_t height, vk::Format format,
                       vk::ImageTiling tiling, vk::ImageUsageFlags usage,
                       vk::MemoryPropertyFlags properties,
@@ -242,6 +211,4 @@ private:
 
     vk::UniqueImageView CreateImageView(vk::Image, vk::Format,
                                         vk::ImageAspectFlags);
-
-    Camera m_camera;
 };

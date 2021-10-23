@@ -1,4 +1,4 @@
-#include "app.hpp"
+#include <engine.hpp>
 #include <GLFW/glfw3.h>
 #include <vulkan/vulkan.hpp>
 #include <spdlog/spdlog.h>
@@ -17,10 +17,10 @@
 #include "bindings/imgui_impl_glfw.h"
 #include "bindings/imgui_impl_vulkan.h"
 
-const std::vector<const char*> App::s_validationLayers = {
+const std::vector<const char*> Engine::s_validationLayers = {
     "VK_LAYER_KHRONOS_validation"
 };
-const std::vector<const char*> App::s_deviceExtensions = {
+const std::vector<const char*> Engine::s_deviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
 
@@ -34,7 +34,7 @@ namespace {
             std::vector<vk::LayerProperties> availableLayers(layerCount);
             if (vk::enumerateInstanceLayerProperties(&layerCount, availableLayers.data()) == vk::Result::eSuccess)
             {
-                for (const char* layerName : App::s_validationLayers) {
+                for (const char* layerName : Engine::s_validationLayers) {
                     bool layerFound = false;
 
                     for (const auto& layerProperties : availableLayers) {
@@ -161,64 +161,7 @@ namespace {
 
 }
 
-static void framebufferResizeCallback(GLFWwindow* window, int width, int height)
-{
-    auto app = reinterpret_cast<App*>(glfwGetWindowUserPointer(window));
-    app->m_framebufferResized = true;
-    app->m_width = width;
-    app->m_height = height;
-}
-
-static void cursorPositionCallback(GLFWwindow* window, double xpos, double ypos)
-{
-    static double px = xpos, py = ypos;
-
-    double dx = xpos - px;
-    double dy = ypos - py;
-
-    px = xpos;
-    py = ypos;
-
-    auto app = reinterpret_cast<App*>(glfwGetWindowUserPointer(window));
-
-    int state = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
-    if (state == GLFW_PRESS)
-    {
-        const glm::vec3 sideways = glm::normalize(glm::cross({0.f, 1.f, 0.f}, app->m_camera.direction));
-
-        app->m_camera.direction = glm::rotate(static_cast<float>(-dx * 0.001f),
-                                              glm::vec3{0, 1, 0}) * glm::vec4(app->m_camera.direction, 1.f);
-
-        app->m_camera.direction = glm::rotate(static_cast<float>(dy * 0.001f),
-                                              sideways) * glm::vec4(app->m_camera.direction, 1.f);
-    }
-}
-
-void App::InitWindow()
-{
-    if (!glfwInit())
-    {
-        spdlog::error("GLFW initialization failed");
-        throw std::runtime_error("GLFW init failed");
-    }
-
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
-    glfwSetErrorCallback(window_error_callback);
-
-    m_window = glfwCreateWindow(m_width, m_height, "Vulkan", nullptr, nullptr);
-    glfwSetWindowUserPointer(m_window, this);
-    glfwSetFramebufferSizeCallback(m_window, framebufferResizeCallback);
-    glfwSetCursorPosCallback(m_window, cursorPositionCallback);
-
-
-    m_camera.SetPerspective(m_fov, AspectRatio(), 0.01, 100);
-
-    m_camera.position = {0.f, 2.f, 5.f};
-    m_camera.direction = {0.f, 0.f, -1.f};
-}
-
-std::vector<const char*> App::GetRequiredExtensions()
+std::vector<const char*> Engine::GetRequiredExtensions()
 {
     uint32_t glfwExtensionCount = 0;
     const char** glfwExtensions;
@@ -234,7 +177,7 @@ std::vector<const char*> App::GetRequiredExtensions()
     return result;
 }
 
-void App::CreateInstance()
+void Engine::CreateInstance()
 {
     if (m_validationLayers && !CheckValidationLayerSupport())
     {
@@ -266,7 +209,7 @@ void App::CreateInstance()
     spdlog::info("Create vulkan instance successful");
 }
 
-void App::SetupDebugMessenger()
+void Engine::SetupDebugMessenger()
 {
     if (!m_validationLayers) return;
 
@@ -280,8 +223,8 @@ bool CheckDeviceExtensionSupport(const vk::PhysicalDevice& device) {
 
     auto availableExtensions = device.enumerateDeviceExtensionProperties();
 
-    std::set<std::string> requiredExtensions(App::s_deviceExtensions.begin(),
-                                             App::s_deviceExtensions.end());
+    std::set<std::string> requiredExtensions(Engine::s_deviceExtensions.begin(),
+                                             Engine::s_deviceExtensions.end());
 
     for (const auto& extension : availableExtensions) {
         requiredExtensions.erase(extension.extensionName);
@@ -290,7 +233,7 @@ bool CheckDeviceExtensionSupport(const vk::PhysicalDevice& device) {
     return requiredExtensions.empty();
 }
 
-bool App::IsDeviceSuitable(const vk::PhysicalDevice& device)
+bool Engine::IsDeviceSuitable(const vk::PhysicalDevice& device)
 {
     QueueFamilyIndices indices = FindQueueFamilies(device, *m_surface);
 
@@ -306,7 +249,7 @@ bool App::IsDeviceSuitable(const vk::PhysicalDevice& device)
     return indices.IsComplete() && extensionsSupported && swapChainOk;
 }
 
-void App::PickPhysicalDevice()
+void Engine::PickPhysicalDevice()
 {
     auto devices = m_instance->enumeratePhysicalDevices(m_dispatcher);
 
@@ -330,10 +273,12 @@ void App::PickPhysicalDevice()
     {
         throw std::runtime_error("failed to find a suitable GPU!");
     }
-    spdlog::info("Physical device picked");
+
+    auto props = m_physicalDevice.getProperties();
+    spdlog::info("Physical device picked: {}", props.deviceName);
 }
 
-void App::CreateLogicalDevice()
+void Engine::CreateLogicalDevice()
 {
     auto indices = FindQueueFamilies(m_physicalDevice, *m_surface);
 
@@ -370,7 +315,7 @@ void App::CreateLogicalDevice()
     m_presentQueue = m_device->getQueue(indices.presentFamily.value(), 0);
 }
 
-void App::CreateSurface()
+void Engine::CreateSurface()
 {
     VkSurfaceKHR surface;
     if (glfwCreateWindowSurface(*m_instance, m_window, nullptr, &surface) != VK_SUCCESS)
@@ -381,7 +326,7 @@ void App::CreateSurface()
     m_surface = vk::UniqueSurfaceKHR(surface, *m_instance);
 }
 
-vk::SurfaceFormatKHR App::ChooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& formats)
+vk::SurfaceFormatKHR Engine::ChooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& formats)
 {
     auto it = std::ranges::find_if(formats, [] (const vk::SurfaceFormatKHR& format)
     {
@@ -392,7 +337,7 @@ vk::SurfaceFormatKHR App::ChooseSwapSurfaceFormat(const std::vector<vk::SurfaceF
     return it != formats.end() ? *it : formats[0];
 }
 
-vk::Extent2D App::ChooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities, GLFWwindow* window)
+vk::Extent2D Engine::ChooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities, GLFWwindow* window)
 {
     if (capabilities.currentExtent.width != UINT32_MAX)
     {
@@ -415,17 +360,17 @@ vk::Extent2D App::ChooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilitie
     }
 }
 
-vk::PresentModeKHR App::ChooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& modes)
+vk::PresentModeKHR Engine::ChooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& modes)
 {
     auto it = std::ranges::find_if(modes, [] (const vk::PresentModeKHR& mode)
     {
-        return mode == vk::PresentModeKHR::eMailbox;
+        return mode == vk::PresentModeKHR::eImmediate;
     });
 
     return it != modes.end() ? *it : vk::PresentModeKHR::eFifo;
 }
 
-void App::CreateSwapChain()
+void Engine::CreateSwapChain()
 {
     SwapChainSupportDetails swapChainSupport = QuerySwapChainSupport(m_physicalDevice, *m_surface);
 
@@ -473,7 +418,7 @@ void App::CreateSwapChain()
     m_swapChainExtent = extent;
 }
 
-void App::CreateImageViews()
+void Engine::CreateImageViews()
 {
     m_swapChainImageViews.resize(m_swapChainImages.size());
 
@@ -486,7 +431,7 @@ void App::CreateImageViews()
     }
 }
 
-vk::UniqueShaderModule App::CreateShaderModule(const std::vector<uint32_t>& data)
+vk::UniqueShaderModule Engine::CreateShaderModule(const std::vector<uint32_t>& data)
 {
     vk::ShaderModuleCreateInfo createInfo;
 
@@ -496,7 +441,7 @@ vk::UniqueShaderModule App::CreateShaderModule(const std::vector<uint32_t>& data
     return m_device->createShaderModuleUnique(createInfo);
 }
 
-void App::CreateRenderPass()
+void Engine::CreateRenderPass()
 {
     vk::AttachmentDescription colorAttachment;
     colorAttachment.format = m_swapChainImageFormat;
@@ -555,7 +500,7 @@ void App::CreateRenderPass()
     m_renderPass = m_device->createRenderPassUnique(createInfo);
 }
 
-vk::UniquePipeline App::CreateWholeScreenPipeline(vk::ShaderModule vertexModule,
+vk::UniquePipeline Engine::CreateWholeScreenPipeline(vk::ShaderModule vertexModule,
                                                   vk::ShaderModule fragmentModule)
 {
     vk::PipelineShaderStageCreateInfo vertCreateInfo;
@@ -646,7 +591,7 @@ vk::UniquePipeline App::CreateWholeScreenPipeline(vk::ShaderModule vertexModule,
     return m_device->createGraphicsPipelineUnique(VK_NULL_HANDLE, pipelineInfo).value;
 }
 
-void App::CreateGraphicsPipeline()
+void Engine::CreateGraphicsPipeline()
 {
     auto vertModule = CreateShaderModule(
         ShaderCompiler::CompileFromFile(
@@ -752,7 +697,7 @@ void App::CreateGraphicsPipeline()
     m_graphicsPipeline = m_device->createGraphicsPipelineUnique(VK_NULL_HANDLE, pipelineInfo).value;
 }
 
-void App::CreateFramebuffers()
+void Engine::CreateFramebuffers()
 {
     m_swapChainFramebuffers.resize(m_swapChainImages.size());
 
@@ -774,7 +719,7 @@ void App::CreateFramebuffers()
     }
 }
 
-void App::CreateCommandPool()
+void Engine::CreateCommandPool()
 {
     // Here to properly deallocate command buffers during pool recreation
     m_commandBuffers.clear();
@@ -812,7 +757,7 @@ const std::vector<uint16_t> g_indices = {
     6, 1, 4
 };
 
-void App::CreateCommandBuffers()
+void Engine::CreateCommandBuffers()
 {
     m_commandBuffers.resize(m_swapChainFramebuffers.size());
 
@@ -824,7 +769,7 @@ void App::CreateCommandBuffers()
     m_commandBuffers = m_device->allocateCommandBuffersUnique(allocInfo);
 }
 
-void App::RecreateCommandBuffer(uint32_t i)
+void Engine::RecreateCommandBuffer(uint32_t i)
 {
     m_commandBuffers[i]->reset();
     vk::CommandBufferBeginInfo beginInfo;
@@ -878,7 +823,7 @@ void App::RecreateCommandBuffer(uint32_t i)
     m_commandBuffers[i]->end();
 }
 
-void App::CreateSyncObjects()
+void Engine::CreateSyncObjects()
 {
     m_imageAvailableSemaphores.resize(m_max_frames_in_flight);
     m_renderFinishedSemaphores.resize(m_max_frames_in_flight);
@@ -895,7 +840,7 @@ void App::CreateSyncObjects()
     }
 }
 
-uint32_t App::FindMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties)
+uint32_t Engine::FindMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties)
 {
     auto memProperties = m_physicalDevice.getMemoryProperties();
 
@@ -909,7 +854,7 @@ uint32_t App::FindMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags proper
     throw std::runtime_error("failed to find suitable memory type!");
 }
 
-void App::CreateVertexBuffer()
+void Engine::CreateVertexBuffer()
 {
     vk::DeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
     vk::UniqueBuffer stagingBuffer;
@@ -935,7 +880,7 @@ void App::CreateVertexBuffer()
     CopyBuffer(*stagingBuffer, *m_vertexBuffer, bufferSize);
 }
 
-void App::CreateIndexBuffer()
+void Engine::CreateIndexBuffer()
 {
     vk::DeviceSize bufferSize = sizeof(g_indices[0]) * g_indices.size();
     vk::UniqueBuffer stagingBuffer;
@@ -961,7 +906,7 @@ void App::CreateIndexBuffer()
     CopyBuffer(*stagingBuffer, *m_indexBuffer, bufferSize);
 }
 
-void App::CreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
+void Engine::CreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
                   vk::MemoryPropertyFlags properties,
                   vk::UniqueBuffer& buffer, vk::UniqueDeviceMemory& bufferMemory)
 {
@@ -984,7 +929,7 @@ void App::CreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
     m_device->bindBufferMemory(*buffer, *bufferMemory, 0);
 }
 
-void App::CopyBuffer(vk::Buffer srcBuffer, vk::Buffer dstBuffer, vk::DeviceSize size)
+void Engine::CopyBuffer(vk::Buffer srcBuffer, vk::Buffer dstBuffer, vk::DeviceSize size)
 {
     ImmediateSubmit([&](vk::CommandBuffer& commandBuffer)
     {
@@ -995,7 +940,7 @@ void App::CopyBuffer(vk::Buffer srcBuffer, vk::Buffer dstBuffer, vk::DeviceSize 
     });
 }
 
-void App::CreateDescriptorSetLayout()
+void Engine::CreateDescriptorSetLayout()
 {
     vk::DescriptorSetLayoutBinding uboLayoutBinding;
     uboLayoutBinding.binding = 0;
@@ -1009,7 +954,7 @@ void App::CreateDescriptorSetLayout()
     m_descriptorSetLayout = m_device->createDescriptorSetLayoutUnique(layoutInfo);
 }
 
-void App::CreateUniformBuffers()
+void Engine::CreateUniformBuffers()
 {
     vk::DeviceSize bufferSize = sizeof(m_ubo);
     m_uniformBuffers.resize(m_swapChainImages.size());
@@ -1024,7 +969,7 @@ void App::CreateUniformBuffers()
     }
 }
 
-void App::CreateDescriptorPool()
+void Engine::CreateDescriptorPool()
 {
     vk::DescriptorPoolSize poolSize;
     poolSize.descriptorCount = m_swapChainImages.size();
@@ -1036,7 +981,7 @@ void App::CreateDescriptorPool()
     m_descriptorPool = m_device->createDescriptorPoolUnique(poolInfo);
 }
 
-void App::CreateDescriptorSets()
+void Engine::CreateDescriptorSets()
 {
     std::vector<vk::DescriptorSetLayout> layouts(m_swapChainImages.size(),
                                                  *m_descriptorSetLayout);
@@ -1069,66 +1014,8 @@ void App::CreateDescriptorSets()
     }
 }
 
-void App::InitImGui()
-{
-    //1: create descriptor pool for IMGUI
-    // the size of the pool is very oversize, but it's copied from imgui demo itself.
-    VkDescriptorPoolSize pool_sizes[] =
-        {
-            { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
-            { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
-            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
-            { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
-            { VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
-            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
-            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
-            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
-            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
-            { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
-        };
 
-    VkDescriptorPoolCreateInfo pool_info = {};
-    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-    pool_info.maxSets = 1000;
-    pool_info.poolSizeCount = std::size(pool_sizes);
-    pool_info.pPoolSizes = pool_sizes;
-
-    m_imguiDescriptorPool = m_device->createDescriptorPoolUnique(pool_info);
-
-
-    // 2: initialize imgui library
-
-    //this initializes the core structures of imgui
-    ImGui::CreateContext();
-
-    //this initializes imgui for SDL
-    ImGui_ImplGlfw_InitForVulkan(m_window, true);
-
-    //this initializes imgui for Vulkan
-    ImGui_ImplVulkan_InitInfo init_info = {};
-    init_info.Instance = *m_instance;
-    init_info.PhysicalDevice = m_physicalDevice;
-    init_info.Device = *m_device;
-    init_info.Queue = m_graphicsQueue;
-    init_info.DescriptorPool = *m_imguiDescriptorPool;
-    init_info.MinImageCount = m_swapChainImages.size();
-    init_info.ImageCount = m_swapChainImages.size();
-    init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-
-    ImGui_ImplVulkan_Init(&init_info, *m_renderPass);
-
-    //execute a gpu command to upload imgui font textures
-    ImmediateSubmit([&](VkCommandBuffer cmd) {
-        ImGui_ImplVulkan_CreateFontsTexture(cmd);
-    });
-
-    //clear font textures from cpu data
-    ImGui_ImplVulkan_DestroyFontUploadObjects();
-}
-
-void App::CreateWholeScreenPipelines()
+void Engine::CreateWholeScreenPipelines()
 {
     auto whole = CreateShaderModule(
         ShaderCompiler::CompileFromFile(
@@ -1150,8 +1037,9 @@ void App::CreateWholeScreenPipelines()
     m_torusPipeline = CreateWholeScreenPipeline(*whole, *torus);
 }
 
-void App::InitVulkan()
+void Engine::Init(GLFWwindow* window)
 {
+    m_window = window;
     spdlog::info("Initializing Vulkan");
     CreateInstance();
     SetupDebugMessenger();
@@ -1177,7 +1065,7 @@ void App::InitVulkan()
 }
 
 
-vk::Format App::FindSupportedFormat(const std::vector<vk::Format>& candidates,
+vk::Format Engine::FindSupportedFormat(const std::vector<vk::Format>& candidates,
                                vk::ImageTiling tiling,
                                vk::FormatFeatureFlags features)
 {
@@ -1194,7 +1082,7 @@ vk::Format App::FindSupportedFormat(const std::vector<vk::Format>& candidates,
     throw std::runtime_error("failed to find supported format!");
 }
 
-void App::CreateImage(uint32_t width, uint32_t height, vk::Format format,
+void Engine::CreateImage(uint32_t width, uint32_t height, vk::Format format,
                       vk::ImageTiling tiling, vk::ImageUsageFlags usage,
                       vk::MemoryPropertyFlags properties,
                       vk::UniqueImage& image,
@@ -1227,7 +1115,7 @@ void App::CreateImage(uint32_t width, uint32_t height, vk::Format format,
     m_device->bindImageMemory(*image, *imageMemory, 0);
 }
 
-vk::UniqueImageView App::CreateImageView(vk::Image image, vk::Format format,
+vk::UniqueImageView Engine::CreateImageView(vk::Image image, vk::Format format,
                                          vk::ImageAspectFlags aspectFlags)
 {
     vk::ImageViewCreateInfo viewInfo;
@@ -1243,7 +1131,7 @@ vk::UniqueImageView App::CreateImageView(vk::Image image, vk::Format format,
     return m_device->createImageViewUnique(viewInfo);
 }
 
-void App::CreateDepthResources()
+void Engine::CreateDepthResources()
 {
     vk::Format depthFormat = FindDepthFormat();
     CreateImage(m_swapChainExtent.width, m_swapChainExtent.height,
@@ -1255,16 +1143,15 @@ void App::CreateDepthResources()
                                        vk::ImageAspectFlagBits::eDepth);
 }
 
-void App::UpdateUniformBuffer(uint32_t currentImage)
+void Engine::UpdateUniformBuffer(uint32_t currentImage)
 {
     void* data = m_device->mapMemory(*m_uniformBuffersMemory[currentImage], 0, sizeof(m_ubo));
     memcpy(data, &m_ubo, sizeof(m_ubo));
     m_device->unmapMemory(*m_uniformBuffersMemory[currentImage]);
 }
 
-void App::DrawFrame(float lag)
+void Engine::DrawFrame(float lag)
 {
-    ImGui::Render();
     auto r = m_device->waitForFences(*m_inFlightFences[m_currentFrame],
                                     VK_TRUE, UINT64_MAX);
     auto acquireResult = m_device->acquireNextImageKHR(
@@ -1338,147 +1225,7 @@ void App::DrawFrame(float lag)
     m_currentFrame = (m_currentFrame + 1) % m_max_frames_in_flight;
 }
 
-void App::InitClock()
+void Engine::Terminate()
 {
-    m_last_update = std::chrono::high_resolution_clock::now();
-}
-
-void App::UpdateClock()
-{
-    m_current_update = std::chrono::high_resolution_clock::now();
-    m_lag += m_current_update - m_last_update;
-    m_last_update = m_current_update;
-}
-
-void App::Update(float delta)
-{
-
-    int state = glfwGetMouseButton(m_window, GLFW_MOUSE_BUTTON_LEFT);
-    if (state == GLFW_PRESS)
-    {
-        glfwSetInputMode(m_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-    }
-    else
-    {
-        glfwSetInputMode(m_window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-    }
-
-    glm::vec3 forward;
-    if (m_camera.GetProjectionType() == Projection::PERSPECTIVE)
-    {
-        forward = glm::normalize(m_camera.direction);
-    }
-    else if (m_camera.GetProjectionType() == Projection::ORTHO)
-    {
-        forward = glm::normalize(
-            glm::vec3(m_camera.direction.x, 0, m_camera.direction.z));
-    }
-    glm::vec3 sideways = glm::normalize(glm::cross({0.f, 1.f, 0.f}, m_camera.direction));
-
-    glm::vec3 move = {0, 0, 0};
-    if (glfwGetKey(m_window, GLFW_KEY_W))
-        move += forward;
-    if (glfwGetKey(m_window, GLFW_KEY_S))
-        move += -forward;
-    if (glfwGetKey(m_window, GLFW_KEY_D))
-        move += -sideways;
-    if (glfwGetKey(m_window, GLFW_KEY_A))
-        move += sideways;
-
-    if (glm::length2(move) > 0)
-        move = glm::normalize(move);
-
-    m_camera.position += move * delta;
-    m_ubo.model = glm::identity<glm::mat4>();
-    m_ubo.model = glm::translate(m_ubo.model, glm::vec3{3, 2, 0});
-    m_ubo.model = glm::scale(m_ubo.model, glm::vec3{1.f, 1.f, 1.f});
-    m_ubo.view = m_camera.GetView();
-    m_ubo.proj = m_camera.GetProjection();
-}
-
-void App::Loop()
-{
-    using namespace std::chrono;
-    InitClock();
-
-    while (!glfwWindowShouldClose(m_window)) {
-        glfwPollEvents();
-
-        UpdateClock();
-
-        ImGui_ImplGlfw_NewFrame();
-        ImGui_ImplVulkan_NewFrame();
-        ImGui::NewFrame();
-        ImGui::Begin("Shaders");
-        ImGui::Text("Average %.3f ms/frame (%.1f FPS)",
-                    1000.0f / ImGui::GetIO().Framerate,
-                    ImGui::GetIO().Framerate);
-        if (ImGui::Button("Recompile Shaders"))
-        {
-            m_device->waitIdle();
-            try
-            {
-                CreateGraphicsPipeline();
-                CreateWholeScreenPipelines();
-            }
-            catch(const vk::Error& e)
-            {
-                spdlog::error("Recreating pipeline failed: {}", e.what());
-            }
-        }
-        ImGui::End();
-
-        ImGui::Begin("Camera");
-        ImGui::Text("Position %.3f %.3f %.3f",
-                    m_camera.position.x,
-                    m_camera.position.y,
-                    m_camera.position.z);
-
-        ImGui::Text("Direction %.3f %.3f %.3f",
-                    m_camera.direction.x,
-                    m_camera.direction.y,
-                    m_camera.direction.z);
-
-        if (ImGui::BeginCombo("Projection", Projection::ToString(m_camera.GetProjectionType())))
-        {
-            if (ImGui::Selectable(Projection::ToString(Projection::ORTHO)))
-            {
-                m_camera.SetOrtho(m_width/100, m_height/100, 100);
-            }
-
-            if (ImGui::Selectable(Projection::ToString(Projection::PERSPECTIVE)))
-            {
-                m_camera.SetPerspective(m_fov, AspectRatio(), 0.01, 100);
-            }
-
-            ImGui::EndCombo();
-        }
-
-        if (m_camera.GetProjectionType() == Projection::PERSPECTIVE)
-        {
-            if (ImGui::SliderFloat("FOV", &m_fov, 0.01, std::numbers::pi - 0.2))
-            {
-                m_camera.SetPerspective(m_fov, AspectRatio(), 0.01, 100);
-            }
-        }
-        ImGui::End();
-
-        while (m_lag > m_desired_delta)
-        {
-            m_lag -= m_desired_delta;
-            Update(duration<float>(m_desired_delta).count());
-        }
-
-        DrawFrame(duration<float>(m_lag).count() /
-                  duration<float>(m_desired_delta).count());
-    }
-
     m_device->waitIdle();
-}
-
-void App::Terminate()
-{
-    ImGui_ImplVulkan_Shutdown();
-    glfwDestroyWindow(m_window);
-    glfwTerminate();
 }

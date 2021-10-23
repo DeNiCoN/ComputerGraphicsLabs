@@ -73,6 +73,21 @@ public:
         return m_projectionType;
     }
 
+    void SetViewport(int width, int height)
+    {
+        if (GetProjectionType() == Projection::PERSPECTIVE)
+        {
+            SetPerspective(m_fov, width / static_cast<float>(height),
+                           0.01f, 100.f);
+        }
+        else if (GetProjectionType() == Projection::ORTHO)
+        {
+            SetOrtho(width/100.f, height/100.f, 100.f);
+        }
+
+    }
+
+    float m_fov = 2.f;
 private:
     Projection::Projection m_projectionType = Projection::ORTHO;
     glm::mat4 m_proj = glm::identity<glm::mat4>();
