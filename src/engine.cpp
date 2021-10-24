@@ -16,6 +16,8 @@
 #include <imgui.h>
 #include "bindings/imgui_impl_glfw.h"
 #include "bindings/imgui_impl_vulkan.h"
+#include <Tracy.hpp>
+#include <TracyVulkan.hpp>
 
 const std::vector<const char*> Engine::s_validationLayers = {
     "VK_LAYER_KHRONOS_validation"
@@ -771,6 +773,7 @@ void Engine::CreateCommandBuffers()
 
 void Engine::RecreateCommandBuffer(uint32_t i)
 {
+    ZoneScoped;
     m_commandBuffers[i]->reset();
     vk::CommandBufferBeginInfo beginInfo;
     beginInfo.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit;
@@ -809,17 +812,28 @@ void Engine::RecreateCommandBuffer(uint32_t i)
                                             *m_pipelineLayout, 0, m_descriptorSets[i],
                                             nullptr);
 
+    {
+    TracyVkZone(m_tracyCtxs[i], *m_commandBuffers[i], "Normal");
     m_commandBuffers[i]->drawIndexed(static_cast<uint32_t>(g_indices.size()), 1, 0, 0, 0);
+    }
 
     m_commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_torusPipeline);
+    {
+    TracyVkZone(m_tracyCtxs[i], *m_commandBuffers[i], "Torus");
     m_commandBuffers[i]->draw(3, 1, 0, 0);
+    }
 
     m_commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_gridPipeline);
+    {
+    TracyVkZone(m_tracyCtxs[i], *m_commandBuffers[i], "Grid");
     m_commandBuffers[i]->draw(3, 1, 0, 0);
+    }
 
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *m_commandBuffers[i]);
 
     m_commandBuffers[i]->endRenderPass();
+
+    TracyVkCollect(m_tracyCtxs[i], *m_commandBuffers[i]);
     m_commandBuffers[i]->end();
 }
 
@@ -1062,6 +1076,8 @@ void Engine::Init(GLFWwindow* window)
     CreateIndexBuffer();
     CreateCommandBuffers();
     CreateSyncObjects();
+
+    CreateTracyContexts();
 }
 
 
@@ -1228,4 +1244,15 @@ void Engine::DrawFrame(float lag)
 void Engine::Terminate()
 {
     m_device->waitIdle();
+    for (auto ctx : m_tracyCtxs)
+        TracyVkDestroy(ctx);
+}
+
+void Engine::CreateTracyContexts()
+{
+    for (auto& cmd : m_commandBuffers)
+    {
+        auto ctx = TracyVkContext(m_physicalDevice, *m_device, m_graphicsQueue, *cmd);
+        m_tracyCtxs.push_back(ctx);
+    }
 }

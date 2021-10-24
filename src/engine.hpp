@@ -8,6 +8,7 @@
 #include <concepts>
 #include "camera.hpp"
 #include <spdlog/spdlog.h>
+#include <TracyVulkan.hpp>
 
 class Engine
 {
@@ -211,4 +212,7 @@ private:
 
     vk::UniqueImageView CreateImageView(vk::Image, vk::Format,
                                         vk::ImageAspectFlags);
+
+    void CreateTracyContexts();
+    std::vector<TracyVkCtx> m_tracyCtxs;
 };

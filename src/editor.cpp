@@ -4,6 +4,7 @@
 #include <imgui.h>
 #include "bindings/imgui_impl_vulkan.h"
 #include "bindings/imgui_impl_glfw.h"
+#include <Tracy.hpp>
 
 void Editor::InitWindow()
 {
@@ -95,6 +96,7 @@ void Editor::UpdateClock()
 
 void Editor::Update(float delta)
 {
+    ZoneScoped;
     int state = glfwGetMouseButton(m_window, GLFW_MOUSE_BUTTON_LEFT);
     if (state == GLFW_PRESS)
     {
@@ -277,6 +279,7 @@ void Editor::Loop()
 
         DrawFrame(duration<float>(m_lag).count() /
                   duration<float>(m_desired_delta).count());
+        FrameMark;
     }
 }
 

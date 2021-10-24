@@ -35,3 +35,13 @@ conan_cmake_install(PATH_OR_REFERENCE .
   REMOTE conancenter
   SETTINGS ${settings}
   )
+
+
+include(FetchContent)
+
+FetchContent_Declare(
+  tracy
+  GIT_REPOSITORY git@github.com:wolfpld/tracy.git
+)
+
+FetchContent_MakeAvailable(tracy)

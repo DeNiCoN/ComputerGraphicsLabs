@@ -36,6 +36,7 @@ target_link_libraries(app
   Boost::Boost
   shaderc::shaderc
   imgui::imgui
+  Tracy::TracyClient
   )
 
 target_include_directories(app PUBLIC src/)
@@ -44,6 +45,7 @@ target_compile_definitions(app PUBLIC
   GLFW_INCLUDE_VULKAN
   GLM_FORCE_RADIANS
   GLM_FORCE_DEPTH_ZERO_TO_ONE
+  TRACY_ENABLE
   )
 
 add_custom_command(TARGET app POST_BUILD
