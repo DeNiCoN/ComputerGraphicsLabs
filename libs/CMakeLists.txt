@@ -20,6 +20,7 @@ conan_cmake_configure(
   vulkan-loader/[>=1.2.172]
   shaderc/[>=2021.1]
   imgui/[>=1.84.2]
+  vulkan-memory-allocator/2.3.0
 
   OPTIONS
   spdlog:header_only=True

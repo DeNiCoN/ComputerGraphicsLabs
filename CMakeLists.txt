@@ -27,16 +27,17 @@ find_package(Vulkan REQUIRED)
 find_package(Boost COMPONENTS REQUIRED system)
 find_package(shaderc REQUIRED)
 find_package(imgui REQUIRED)
+find_package(vulkan-memory-allocator REQUIRED)
 
 target_link_libraries(app
   Vulkan::Vulkan
   glm::glm
   spdlog::spdlog
   glfw::glfw
-  Boost::Boost
   shaderc::shaderc
   imgui::imgui
   Tracy::TracyClient
+  vulkan-memory-allocator::vulkan-memory-allocator
   )
 
 target_include_directories(app PUBLIC src/)

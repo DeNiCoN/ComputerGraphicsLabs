@@ -771,7 +771,7 @@ void Engine::CreateCommandBuffers()
     m_commandBuffers = m_device->allocateCommandBuffersUnique(allocInfo);
 }
 
-void Engine::RecreateCommandBuffer(uint32_t i)
+void Engine::BeginRecreateCommandBuffer(uint32_t i)
 {
     ZoneScoped;
     m_commandBuffers[i]->reset();
@@ -828,9 +828,12 @@ void Engine::RecreateCommandBuffer(uint32_t i)
     TracyVkZone(m_tracyCtxs[i], *m_commandBuffers[i], "Grid");
     m_commandBuffers[i]->draw(3, 1, 0, 0);
     }
+}
+
+void Engine::EndRecreateCommandBuffer(uint32_t i)
+{
 
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *m_commandBuffers[i]);
-
     m_commandBuffers[i]->endRenderPass();
 
     TracyVkCollect(m_tracyCtxs[i], *m_commandBuffers[i]);
@@ -1060,6 +1063,7 @@ void Engine::Init(GLFWwindow* window)
     CreateSurface();
     PickPhysicalDevice();
     CreateLogicalDevice();
+    CreateVmaAllocator();
     CreateSwapChain();
     CreateImageViews();
     CreateRenderPass();
@@ -1078,6 +1082,17 @@ void Engine::Init(GLFWwindow* window)
     CreateSyncObjects();
 
     CreateTracyContexts();
+}
+
+void Engine::CreateVmaAllocator()
+{
+    VmaAllocatorCreateInfo createInfo {};
+    createInfo.device = *m_device;
+    createInfo.instance = *m_instance;
+    createInfo.physicalDevice = m_physicalDevice;
+    createInfo.vulkanApiVersion = VK_API_VERSION_1_2;
+
+    vmaCreateAllocator(&createInfo, &m_vmaAllocator);
 }
 
 
@@ -1195,7 +1210,8 @@ void Engine::DrawFrame(float lag)
     m_imagesInFlight[imageIndex] = *m_inFlightFences[m_currentFrame];
 
     UpdateUniformBuffer(imageIndex);
-    RecreateCommandBuffer(imageIndex);
+    BeginRecreateCommandBuffer(imageIndex);
+    EndRecreateCommandBuffer(imageIndex);
 
     vk::SubmitInfo submitInfo;
 
@@ -1246,6 +1262,8 @@ void Engine::Terminate()
     m_device->waitIdle();
     for (auto ctx : m_tracyCtxs)
         TracyVkDestroy(ctx);
+
+    vmaDestroyAllocator(m_vmaAllocator);
 }
 
 void Engine::CreateTracyContexts()
@@ -1255,4 +1273,87 @@ void Engine::CreateTracyContexts()
         auto ctx = TracyVkContext(m_physicalDevice, *m_device, m_graphicsQueue, *cmd);
         m_tracyCtxs.push_back(ctx);
     }
+}
+
+vk::CommandBuffer Engine::BeginFrame()
+{
+    auto r = m_device->waitForFences(*m_inFlightFences[m_currentFrame],
+                                     VK_TRUE, UINT64_MAX);
+    auto acquireResult = m_device->acquireNextImageKHR(
+        *m_swapChain, UINT64_MAX, *m_imageAvailableSemaphores[m_currentFrame]);
+
+    if (acquireResult.result == vk::Result::eErrorOutOfDateKHR)
+    {
+        RecreateSwapChain();
+        return BeginFrame();
+    }
+    else if (acquireResult.result != vk::Result::eSuccess &&
+             acquireResult.result != vk::Result::eSuboptimalKHR)
+    {
+        throw std::runtime_error("failed to acquire swap chain image!");
+    }
+
+    uint32_t imageIndex = acquireResult.value;
+    m_currentImageIndex = imageIndex;
+
+    if (m_imagesInFlight[imageIndex].has_value())
+    {
+        auto re = m_device->waitForFences(m_imagesInFlight[imageIndex].value(),
+                                          VK_TRUE, UINT64_MAX);
+    }
+
+    m_imagesInFlight[imageIndex] = *m_inFlightFences[m_currentFrame];
+
+    UpdateUniformBuffer(imageIndex);
+    BeginRecreateCommandBuffer(imageIndex);
+    return *m_commandBuffers[imageIndex];
+}
+
+void Engine::EndFrame()
+{
+    uint32_t imageIndex = m_currentImageIndex;
+    EndRecreateCommandBuffer(imageIndex);
+
+    vk::SubmitInfo submitInfo;
+
+    std::array waitSemaphores {*m_imageAvailableSemaphores[m_currentFrame]};
+    vk::PipelineStageFlags waitStages[] {
+        vk::PipelineStageFlagBits::eColorAttachmentOutput
+    };
+
+    submitInfo.setWaitSemaphores(waitSemaphores);
+    submitInfo.pWaitDstStageMask = waitStages;
+    submitInfo.setCommandBuffers(*m_commandBuffers[imageIndex]);
+
+    std::array signalSemaphores {*m_renderFinishedSemaphores[m_currentFrame]};
+    submitInfo.setSignalSemaphores(signalSemaphores);
+
+    m_device->resetFences(*m_inFlightFences[m_currentFrame]);
+
+    m_graphicsQueue.submit(submitInfo, *m_inFlightFences[m_currentFrame]);
+
+    std::array swapchains {*m_swapChain};
+
+    vk::PresentInfoKHR presentInfo;
+    presentInfo.setWaitSemaphores(signalSemaphores);
+    presentInfo.setSwapchains(swapchains);
+    presentInfo.setImageIndices(imageIndex);
+
+    VkQueue q = m_graphicsQueue;
+    VkPresentInfoKHR p = presentInfo;
+    auto presentResult = vkQueuePresentKHR(q, &p);
+    if (presentResult == VK_SUBOPTIMAL_KHR ||
+        presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
+        m_framebufferResized)
+    {
+        m_framebufferResized = false;
+        RecreateSwapChain();
+        return;
+    }
+    else if (presentResult != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to present swap chain image!");
+    }
+
+    m_currentFrame = (m_currentFrame + 1) % m_max_frames_in_flight;
 }

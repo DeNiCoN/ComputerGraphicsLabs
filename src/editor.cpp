@@ -36,6 +36,12 @@ void Editor::InitEngine()
     m_engine.Init(m_window);
 }
 
+void Editor::InitPipelines()
+{
+    m_debug.Init(m_engine);
+    m_engine.AddRecreateCallback([&](Engine& engine) {m_debug.Recreate(engine);});
+}
+
 void Editor::OnResize(int width, int height)
 {
     m_width = width;
@@ -215,6 +221,7 @@ void Editor::ImGuiFrame()
         {
             m_engine.CreateGraphicsPipeline();
             m_engine.CreateWholeScreenPipelines();
+            m_debug.Recreate(m_engine);
         }
         catch(const vk::Error& e)
         {
@@ -285,8 +292,21 @@ void Editor::Loop()
 
 void Editor::DrawFrame(float lag)
 {
+    m_debug.Begin();
+    m_debug.DrawLine({0, 0, 0}, {1, 0.0, 0}, {1.f, 0, 0, 1.f});
+    m_debug.DrawLine({0, 0, 0}, {0, 1.0, 0}, {0, 1.f, 0, 1.f});
+    m_debug.DrawLine({0, 0, 0}, {0, 0.0, 1}, {0, 0, 1.f, 1.f});
+    //m_debug.DrawArrow({0.4, 1.1, 0.4}, {-4.4, 4.0, 7.4}, {1.f, 1.f, 1.f, 1.f});
+    //m_debug.DrawBox({1.f, 1.f, 2.f}, {0.5, 0.1, 0.5}, {1.f, 1.f, 1.f, 1.f});
+    m_debug.End(m_engine);
+
     ImGui::Render();
-    m_engine.DrawFrame(lag);
+    //m_engine.DrawFrame(lag);
+    auto cmd = m_engine.BeginFrame();
+
+    m_debug.WriteCmdBuffer(cmd, m_engine);
+
+    m_engine.EndFrame();
 }
 
 void Editor::Terminate()

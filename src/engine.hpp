@@ -9,6 +9,7 @@
 #include "camera.hpp"
 #include <spdlog/spdlog.h>
 #include <TracyVulkan.hpp>
+#include <vk_mem_alloc.h>
 
 class Engine
 {
@@ -27,6 +28,19 @@ public:
     vk::Queue GetGraphicsQueue() { return m_graphicsQueue; }
     std::size_t GetImageCount() const { return m_swapChainImages.size(); }
     vk::RenderPass GetRenderPass() { return *m_renderPass; }
+    vk::Extent2D GetSwapChainExtent() { return m_swapChainExtent; }
+    vk::PipelineLayout GetPipelineLayout() { return *m_pipelineLayout; }
+    TracyVkCtx GetCurrentTracyContext() { return m_tracyCtxs[m_currentImageIndex]; }
+    unsigned GetCurrentFrame() { return m_currentFrame; }
+    unsigned GetMaxFramesInFlight() { return m_max_frames_in_flight; }
+    VmaAllocator GetVmaAllocator() { return m_vmaAllocator; }
+
+    vk::UniqueShaderModule CreateShaderModule(const std::vector<uint32_t>&);
+
+    void AddRecreateCallback(std::function<void(Engine&)> callback)
+    {
+        m_recreateCallbacks.push_back(callback);
+    }
 
     template<std::invocable<vk::CommandBuffer&> T>
     void ImmediateSubmit(T func)
@@ -65,6 +79,9 @@ public:
     };
 
     UniformBufferObject m_ubo;
+
+    vk::CommandBuffer BeginFrame();
+    void EndFrame();
 private:
     std::vector<const char*> GetRequiredExtensions();
     void CreateInstance();
@@ -81,7 +98,8 @@ private:
     void CreateCommandPool();
     void CreateDepthResources();
     void CreateCommandBuffers();
-    void RecreateCommandBuffer(uint32_t imageIndex);
+    void BeginRecreateCommandBuffer(uint32_t imageIndex);
+    void EndRecreateCommandBuffer(uint32_t imageIndex);
     void CreateSyncObjects();
     void CreateVertexBuffer();
     void CreateIndexBuffer();
@@ -89,6 +107,7 @@ private:
     void CreateUniformBuffers();
     void CreateDescriptorPool();
     void CreateDescriptorSets();
+    void CreateVmaAllocator();
 
     void CreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
                       vk::MemoryPropertyFlags properties,
@@ -118,15 +137,19 @@ private:
         CreateDescriptorPool();
         CreateDescriptorSets();
         CreateCommandBuffers();
+
+        for (auto& callback : m_recreateCallbacks)
+        {
+            callback(*this);
+        }
     }
 
-    vk::UniqueShaderModule CreateShaderModule(const std::vector<uint32_t>&);
     void Loop();
 
     void UpdateUniformBuffer(uint32_t currentImage);
 
 
-    const int m_max_frames_in_flight = 2;
+    const unsigned m_max_frames_in_flight = 2;
     std::size_t m_currentFrame = 0;
     bool m_framebufferResized = false;
 
@@ -215,4 +238,9 @@ private:
 
     void CreateTracyContexts();
     std::vector<TracyVkCtx> m_tracyCtxs;
+
+    VmaAllocator m_vmaAllocator;
+    uint32_t m_currentImageIndex;
+
+    std::vector<std::function<void(Engine&)>> m_recreateCallbacks;
 };

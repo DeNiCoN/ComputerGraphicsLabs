@@ -1,6 +1,8 @@
 #include "editor.hpp"
 #include "files.hpp"
 #include <iostream>
+#define VMA_IMPLEMENTATION
+#include "vk_mem_alloc.h"
 
 int main(int argc, char* argv[]) {
     Files::Init(argc, argv);

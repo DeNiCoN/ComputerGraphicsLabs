@@ -1,5 +1,6 @@
 #pragma once
 #include "engine.hpp"
+#include "debug_pipelines.hpp"
 
 class Editor
 {
@@ -18,12 +19,14 @@ private:
     void InitWindowCallbacks();
     void InitCamera();
     void InitEngine();
+    void InitPipelines();
     void InitImGui();
     void Init()
     {
         InitWindow();
         InitCamera();
         InitEngine();
+        InitPipelines();
         InitImGui();
     }
     void InitClock();
@@ -54,4 +57,5 @@ private:
     void OnMouseMove(double xpos, double ypos);
 
     vk::UniqueDescriptorPool m_imguiDescriptorPool;
+    DebugPipelines m_debug;
 };
