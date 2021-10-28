@@ -13,6 +13,7 @@ layout(binding = 0) uniform UniformBufferObject
     mat4 model;
     mat4 view;
     mat4 proj;
+    vec2 resolution;
 } ubo;
 
 float Torus(vec3 p, vec2 r){

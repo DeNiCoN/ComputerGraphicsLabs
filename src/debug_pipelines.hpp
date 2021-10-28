@@ -2,6 +2,7 @@
 #include <glm/glm.hpp>
 #include <vulkan/vulkan.hpp>
 #include <engine.hpp>
+#include <iostream>
 
 class DebugPipelines
 {
@@ -11,7 +12,7 @@ public:
     void Init(Engine& engine);
     void Begin();
 
-    void DrawLine(glm::vec3 from, glm::vec3 to, glm::vec4 color, float width = 0.005f)
+    void DrawLine(glm::vec3 from, glm::vec3 to, glm::vec4 color, float width = 1)
     {
         m_lines.push_back({
                 .color = color,
@@ -21,7 +22,7 @@ public:
             });
     }
 
-    void DrawArrow(glm::vec3 from, glm::vec3 to, glm::vec4 color, float width = 0.005f)
+    void DrawArrow(glm::vec3 from, glm::vec3 to, glm::vec4 color, float width = 1)
     {
         m_arrows.push_back({
                 .color = color,
@@ -51,7 +52,7 @@ private:
 
     template<typename T>
     static void ReallocAndCopyToBuffer(const std::vector<T>&, VmaAllocation&,
-                                       VkBuffer&, Engine& engine);
+                                       VkBuffer&, Engine& engine, std::size_t&);
 
     vk::VertexInputBindingDescription GetLineBindingDescription();
     vk::VertexInputBindingDescription GetBoxBindingDescription();
@@ -59,17 +60,17 @@ private:
 
     struct LineData
     {
-        glm::vec4 color;
-        glm::vec3 from;
-        glm::vec3 to;
-        float width = 0.005;
+        alignas(16) glm::vec4 color;
+        alignas(16) glm::vec3 from;
+        alignas(16) glm::vec3 to;
+        alignas(4) float width = 0.005;
     };
 
     struct BoxData
     {
-        glm::vec4 color;
-        glm::vec3 center;
-        glm::vec3 dimensions;
+        alignas(16) glm::vec4 color;
+        alignas(16) glm::vec3 center;
+        alignas(16) glm::vec3 dimensions;
     };
 
     std::array<vk::VertexInputAttributeDescription, 4> GetLineAttributeDescriptions();
@@ -88,6 +89,10 @@ private:
     std::vector<VkBuffer> m_arrowBuffers;
     std::vector<VkBuffer> m_boxBuffers;
 
+    std::vector<std::size_t> m_lineBuffersSize;
+    std::vector<std::size_t> m_arrowBuffersSize;
+    std::vector<std::size_t> m_boxBuffersSize;
+
     std::vector<VmaAllocation> m_lineBuffersAllocation;
     std::vector<VmaAllocation> m_arrowBuffersAllocation;
     std::vector<VmaAllocation> m_boxBuffersAllocation;
@@ -98,19 +103,21 @@ private:
 template<typename T>
 void DebugPipelines::ReallocAndCopyToBuffer(
     const std::vector<T>& vec, VmaAllocation& allocation,
-    VkBuffer& buffer, Engine& engine)
+    VkBuffer& buffer, Engine& engine, std::size_t& currentSize)
 {
     auto newSize = vec.size() * sizeof(T);
 
     if (newSize > 0)
     {
-        VmaAllocationInfo allocationInfo;
+        VmaAllocationInfo allocationInfo {};
         vmaGetAllocationInfo(engine.GetVmaAllocator(), allocation, &allocationInfo);
 
-        if (allocationInfo.size < newSize)
+        if (currentSize < newSize)
         {
-            VkBufferCreateInfo bufferInfo = {};
+            VkBufferCreateInfo bufferInfo {};
+            bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
             bufferInfo.size = newSize;
+            currentSize = newSize;
             bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
 
             VmaAllocationCreateInfo allocInfo = {};

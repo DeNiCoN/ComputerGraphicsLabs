@@ -2,6 +2,7 @@
 #include "files.hpp"
 #include "shader_compiler.hpp"
 #include <TracyVulkan.hpp>
+#include <iostream>
 
 void DebugPipelines::Init(Engine& engine)
 {
@@ -25,6 +26,7 @@ void DebugPipelines::CreateVertexBuffers(Engine& engine)
         m_lineBuffers.push_back({});
         m_lineBuffersAllocation.push_back({});
         bufferInfo.size = sizeof(LineData);
+        m_lineBuffersSize.push_back(bufferInfo.size);
         vmaCreateBuffer(engine.GetVmaAllocator(),
                         &bufferInfo,
                         &allocInfo,
@@ -35,6 +37,7 @@ void DebugPipelines::CreateVertexBuffers(Engine& engine)
         m_arrowBuffers.push_back({});
         m_arrowBuffersAllocation.push_back({});
         bufferInfo.size = sizeof(LineData);
+        m_arrowBuffersSize.push_back(bufferInfo.size);
         vmaCreateBuffer(engine.GetVmaAllocator(),
                         &bufferInfo,
                         &allocInfo,
@@ -45,6 +48,7 @@ void DebugPipelines::CreateVertexBuffers(Engine& engine)
         m_boxBuffers.push_back({});
         m_boxBuffersAllocation.push_back({});
         bufferInfo.size = sizeof(BoxData);
+        m_boxBuffersSize.push_back(bufferInfo.size);
         vmaCreateBuffer(engine.GetVmaAllocator(),
                         &bufferInfo,
                         &allocInfo,
@@ -190,7 +194,7 @@ void DebugPipelines::CreateGraphicsPipelines(Engine& engine)
     rasterizerInfo.rasterizerDiscardEnable = VK_FALSE;
     rasterizerInfo.polygonMode = vk::PolygonMode::eFill;
     rasterizerInfo.lineWidth = 1.0f;
-    rasterizerInfo.cullMode = vk::CullModeFlagBits::eBack;
+    rasterizerInfo.cullMode = vk::CullModeFlagBits::eNone;
     rasterizerInfo.frontFace = vk::FrontFace::eCounterClockwise;
     rasterizerInfo.depthBiasEnable = VK_FALSE;
 
@@ -266,14 +270,25 @@ void DebugPipelines::End(Engine& engine)
 {
     auto i = engine.GetCurrentFrame();
 
-    ReallocAndCopyToBuffer(m_lines, m_lineBuffersAllocation[i], m_lineBuffers[i], engine);
-    ReallocAndCopyToBuffer(m_boxes, m_boxBuffersAllocation[i], m_boxBuffers[i], engine);
-    ReallocAndCopyToBuffer(m_arrows, m_arrowBuffersAllocation[i], m_arrowBuffers[i], engine);
+    ReallocAndCopyToBuffer(m_lines, m_lineBuffersAllocation[i], m_lineBuffers[i], engine, m_lineBuffersSize[i]);
+    ReallocAndCopyToBuffer(m_arrows, m_arrowBuffersAllocation[i], m_arrowBuffers[i], engine, m_arrowBuffersSize[i]);
+    ReallocAndCopyToBuffer(m_boxes, m_boxBuffersAllocation[i], m_boxBuffers[i], engine, m_boxBuffersSize[i]);
 }
 
 void DebugPipelines::WriteCmdBuffer(vk::CommandBuffer cmd, Engine& engine)
 {
     auto i = engine.GetCurrentFrame();
+
+    vk::ClearAttachment clearAttachment;
+    clearAttachment.aspectMask = vk::ImageAspectFlagBits::eDepth;
+    clearAttachment.clearValue = vk::ClearValue(vk::ClearDepthStencilValue(1.f, 0.f));
+
+    auto extent = engine.GetSwapChainExtent();
+    vk::ClearRect clearRect;
+    clearRect.layerCount = 1;
+    clearRect.rect.extent = extent;
+
+    cmd.clearAttachments(clearAttachment, clearRect);
 
     if (m_lines.size() > 0)
     {

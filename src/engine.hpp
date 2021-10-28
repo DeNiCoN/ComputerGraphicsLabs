@@ -31,8 +31,13 @@ public:
     vk::Extent2D GetSwapChainExtent() { return m_swapChainExtent; }
     vk::PipelineLayout GetPipelineLayout() { return *m_pipelineLayout; }
     TracyVkCtx GetCurrentTracyContext() { return m_tracyCtxs[m_currentImageIndex]; }
-    unsigned GetCurrentFrame() { return m_currentFrame; }
-    unsigned GetMaxFramesInFlight() { return m_max_frames_in_flight; }
+    unsigned GetCurrentFrame() const { return m_currentFrame; }
+    unsigned GetCurrentImage() const { return m_currentImageIndex; }
+    unsigned GetMaxFramesInFlight() const { return m_max_frames_in_flight; }
+    const std::vector<vk::UniqueImageView>& GetSwapChainImageViews()
+    {
+        return m_swapChainImageViews;
+    }
     VmaAllocator GetVmaAllocator() { return m_vmaAllocator; }
 
     vk::UniqueShaderModule CreateShaderModule(const std::vector<uint32_t>&);
@@ -76,12 +81,42 @@ public:
         alignas(16) glm::mat4 model;
         alignas(16) glm::mat4 view;
         alignas(16) glm::mat4 proj;
+        alignas(8) glm::vec2 resolution;
     };
 
     UniformBufferObject m_ubo;
 
     vk::CommandBuffer BeginFrame();
     void EndFrame();
+
+    void BeginRenderPass(vk::CommandBuffer);
+    void EndRenderPass(vk::CommandBuffer);
+
+    vk::Format FindSupportedFormat(const std::vector<vk::Format>&, vk::ImageTiling,
+                                   vk::FormatFeatureFlags);
+    vk::Format FindDepthFormat()
+    {
+        return FindSupportedFormat(
+            {vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint,
+             vk::Format::eD24UnormS8Uint}, vk::ImageTiling::eOptimal,
+            vk::FormatFeatureFlagBits::eDepthStencilAttachment);
+    }
+
+    bool hasStencilComponent(vk::Format format)
+    {
+        return format == vk::Format::eD32SfloatS8Uint
+            || format == vk::Format::eD24UnormS8Uint;
+    }
+
+    void CreateImage(uint32_t width, uint32_t height, vk::Format format,
+                      vk::ImageTiling tiling, vk::ImageUsageFlags usage,
+                      vk::MemoryPropertyFlags properties,
+                      vk::UniqueImage& image,
+                      vk::UniqueDeviceMemory& imageMemory);
+
+    vk::UniqueImageView CreateImageView(vk::Image, vk::Format,
+                                        vk::ImageAspectFlags);
+
 private:
     std::vector<const char*> GetRequiredExtensions();
     void CreateInstance();
@@ -210,31 +245,6 @@ private:
     static vk::SurfaceFormatKHR ChooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>&);
     static vk::Extent2D ChooseSwapExtent(const vk::SurfaceCapabilitiesKHR&, GLFWwindow*);
     static vk::PresentModeKHR ChooseSwapPresentMode(const std::vector<vk::PresentModeKHR>&);
-
-    vk::Format FindSupportedFormat(const std::vector<vk::Format>&, vk::ImageTiling,
-                                   vk::FormatFeatureFlags);
-    vk::Format FindDepthFormat()
-    {
-        return FindSupportedFormat(
-            {vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint,
-             vk::Format::eD24UnormS8Uint}, vk::ImageTiling::eOptimal,
-            vk::FormatFeatureFlagBits::eDepthStencilAttachment);
-    }
-
-    bool hasStencilComponent(vk::Format format)
-    {
-        return format == vk::Format::eD32SfloatS8Uint
-            || format == vk::Format::eD24UnormS8Uint;
-    }
-
-    void CreateImage(uint32_t width, uint32_t height, vk::Format format,
-                      vk::ImageTiling tiling, vk::ImageUsageFlags usage,
-                      vk::MemoryPropertyFlags properties,
-                      vk::UniqueImage& image,
-                      vk::UniqueDeviceMemory& imageMemory);
-
-    vk::UniqueImageView CreateImageView(vk::Image, vk::Format,
-                                        vk::ImageAspectFlags);
 
     void CreateTracyContexts();
     std::vector<TracyVkCtx> m_tracyCtxs;

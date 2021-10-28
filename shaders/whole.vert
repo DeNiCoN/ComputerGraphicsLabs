@@ -9,6 +9,7 @@ layout(binding = 0) uniform UniformBufferObject
     mat4 model;
     mat4 view;
     mat4 proj;
+    vec2 resolution;
 } ubo;
 
 vec3 UnprojectPoint(float x, float y, float z, mat4 view, mat4 projection) {

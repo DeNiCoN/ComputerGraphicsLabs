@@ -779,62 +779,10 @@ void Engine::BeginRecreateCommandBuffer(uint32_t i)
     beginInfo.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit;
     m_commandBuffers[i]->begin(beginInfo);
 
-    vk::RenderPassBeginInfo renderPassInfo;
-    renderPassInfo.renderPass = *m_renderPass;
-    renderPassInfo.framebuffer = *m_swapChainFramebuffers[i];
-    renderPassInfo.renderArea.offset = vk::Offset2D{0, 0};
-    renderPassInfo.renderArea.extent = m_swapChainExtent;
-
-    vk::ClearValue clearColor{std::array<float, 4>
-                              {0.0f, 0.0f, 0.0f, 1.0f}};
-    std::array clearValues {
-        vk::ClearValue(vk::ClearColorValue(std::array{0.0f, 0.f, 0.f, 0.f})),
-        vk::ClearValue(vk::ClearDepthStencilValue(1.f, 0.f))
-    };
-
-    renderPassInfo.setClearValues(clearValues);
-
-    m_commandBuffers[i]->beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
-
-    m_commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_graphicsPipeline);
-
-    std::array<vk::Buffer, 1> vertexBuffers {*m_vertexBuffer};
-    std::array<vk::DeviceSize, 1> offsets = {0};
-
-    m_commandBuffers[i]->bindVertexBuffers(0, vertexBuffers, offsets);
-    m_commandBuffers[i]->bindIndexBuffer(*m_indexBuffer, 0, vk::IndexType::eUint16);
-
-    m_commandBuffers[i]->bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                                            *m_pipelineLayout, 0, m_descriptorSets[i],
-                                            nullptr);
-
-    m_commandBuffers[i]->bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                                            *m_pipelineLayout, 0, m_descriptorSets[i],
-                                            nullptr);
-
-    {
-    TracyVkZone(m_tracyCtxs[i], *m_commandBuffers[i], "Normal");
-    m_commandBuffers[i]->drawIndexed(static_cast<uint32_t>(g_indices.size()), 1, 0, 0, 0);
-    }
-
-    m_commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_torusPipeline);
-    {
-    TracyVkZone(m_tracyCtxs[i], *m_commandBuffers[i], "Torus");
-    m_commandBuffers[i]->draw(3, 1, 0, 0);
-    }
-
-    m_commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_gridPipeline);
-    {
-    TracyVkZone(m_tracyCtxs[i], *m_commandBuffers[i], "Grid");
-    m_commandBuffers[i]->draw(3, 1, 0, 0);
-    }
 }
 
 void Engine::EndRecreateCommandBuffer(uint32_t i)
 {
-
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *m_commandBuffers[i]);
-    m_commandBuffers[i]->endRenderPass();
 
     TracyVkCollect(m_tracyCtxs[i], *m_commandBuffers[i]);
     m_commandBuffers[i]->end();
@@ -1356,4 +1304,65 @@ void Engine::EndFrame()
     }
 
     m_currentFrame = (m_currentFrame + 1) % m_max_frames_in_flight;
+}
+
+void Engine::BeginRenderPass(vk::CommandBuffer cmd)
+{
+    auto i = m_currentImageIndex;
+    vk::RenderPassBeginInfo renderPassInfo;
+    renderPassInfo.renderPass = *m_renderPass;
+    renderPassInfo.framebuffer = *m_swapChainFramebuffers[i];
+    renderPassInfo.renderArea.offset = vk::Offset2D{0, 0};
+    renderPassInfo.renderArea.extent = m_swapChainExtent;
+
+    vk::ClearValue clearColor{std::array<float, 4>
+                              {0.0f, 0.0f, 0.0f, 1.0f}};
+    std::array clearValues {
+        vk::ClearValue(vk::ClearColorValue(std::array{0.0f, 0.f, 0.f, 0.f})),
+        vk::ClearValue(vk::ClearDepthStencilValue(1.f, 0.f))
+    };
+
+    renderPassInfo.setClearValues(clearValues);
+
+    m_commandBuffers[i]->beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
+
+    m_commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_graphicsPipeline);
+
+    std::array<vk::Buffer, 1> vertexBuffers {*m_vertexBuffer};
+    std::array<vk::DeviceSize, 1> offsets = {0};
+
+    m_commandBuffers[i]->bindVertexBuffers(0, vertexBuffers, offsets);
+    m_commandBuffers[i]->bindIndexBuffer(*m_indexBuffer, 0, vk::IndexType::eUint16);
+
+    m_commandBuffers[i]->bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                                            *m_pipelineLayout, 0, m_descriptorSets[i],
+                                            nullptr);
+
+    m_commandBuffers[i]->bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                                            *m_pipelineLayout, 0, m_descriptorSets[i],
+                                            nullptr);
+
+    {
+    TracyVkZone(m_tracyCtxs[i], *m_commandBuffers[i], "Normal");
+    m_commandBuffers[i]->drawIndexed(static_cast<uint32_t>(g_indices.size()), 1, 0, 0, 0);
+    }
+
+    m_commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_torusPipeline);
+    {
+    TracyVkZone(m_tracyCtxs[i], *m_commandBuffers[i], "Torus");
+    m_commandBuffers[i]->draw(3, 1, 0, 0);
+    }
+
+    m_commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_gridPipeline);
+    {
+    TracyVkZone(m_tracyCtxs[i], *m_commandBuffers[i], "Grid");
+    m_commandBuffers[i]->draw(3, 1, 0, 0);
+    }
+}
+
+void Engine::EndRenderPass(vk::CommandBuffer cmd)
+{
+    auto i = m_currentImageIndex;
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *m_commandBuffers[i]);
+    m_commandBuffers[i]->endRenderPass();
 }

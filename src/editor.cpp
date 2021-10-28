@@ -144,6 +144,8 @@ void Editor::Update(float delta)
     m_engine.m_ubo.model = glm::scale(m_engine.m_ubo.model, glm::vec3{1.f, 1.f, 1.f});
     m_engine.m_ubo.view = m_camera.GetView();
     m_engine.m_ubo.proj = m_camera.GetProjection();
+    auto extent = m_engine.GetSwapChainExtent();
+    m_engine.m_ubo.resolution = glm::vec2(extent.width, extent.height);
 }
 
 void Editor::InitImGui()
@@ -293,9 +295,11 @@ void Editor::Loop()
 void Editor::DrawFrame(float lag)
 {
     m_debug.Begin();
-    m_debug.DrawLine({0, 0, 0}, {1, 0.0, 0}, {1.f, 0, 0, 1.f});
-    m_debug.DrawLine({0, 0, 0}, {0, 1.0, 0}, {0, 1.f, 0, 1.f});
-    m_debug.DrawLine({0, 0, 0}, {0, 0.0, 1}, {0, 0, 1.f, 1.f});
+    m_debug.DrawLine({0, 0, 0}, {1, 0.0, 0}, {1.f, 0, 0, 0.7f});
+    m_debug.DrawLine({0, 0, 0}, {0, 1.0, 0}, {0, 1.f, 0, 0.7f});
+    m_debug.DrawLine({0, 0, 0}, {0, 0.0, 1}, {0, 0, 1.f, 0.7f});
+    m_debug.DrawBox({0, 0, 0}, {10, 10, 5}, {1.f, 1.f, 0, 0.8f});
+    m_debug.DrawBox({0, 10, 0}, {5, 5, 5}, {1.f, 1.f, 1.f, 1.f});
     //m_debug.DrawArrow({0.4, 1.1, 0.4}, {-4.4, 4.0, 7.4}, {1.f, 1.f, 1.f, 1.f});
     //m_debug.DrawBox({1.f, 1.f, 2.f}, {0.5, 0.1, 0.5}, {1.f, 1.f, 1.f, 1.f});
     m_debug.End(m_engine);
@@ -303,9 +307,9 @@ void Editor::DrawFrame(float lag)
     ImGui::Render();
     //m_engine.DrawFrame(lag);
     auto cmd = m_engine.BeginFrame();
-
+    m_engine.BeginRenderPass(cmd);
     m_debug.WriteCmdBuffer(cmd, m_engine);
-
+    m_engine.EndRenderPass(cmd);
     m_engine.EndFrame();
 }
 
