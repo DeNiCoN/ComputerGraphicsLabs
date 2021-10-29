@@ -303,7 +303,7 @@ void DebugPipelines::WriteCmdBuffer(vk::CommandBuffer cmd, Engine& engine)
         TracyVkZone(engine.GetCurrentTracyContext(), cmd, "Debug arrows");
         cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *m_arrowPipeline);
         cmd.bindVertexBuffers(0, {m_arrowBuffers[i]}, {0});
-        cmd.draw(9, m_arrows.size(), 0, 0);
+        cmd.draw(6, m_arrows.size(), 0, 0);
     }
 
     if (m_boxes.size() > 0)

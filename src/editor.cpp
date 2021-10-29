@@ -295,11 +295,14 @@ void Editor::Loop()
 void Editor::DrawFrame(float lag)
 {
     m_debug.Begin();
-    m_debug.DrawLine({0, 0, 0}, {1, 0.0, 0}, {1.f, 0, 0, 0.7f});
-    m_debug.DrawLine({0, 0, 0}, {0, 1.0, 0}, {0, 1.f, 0, 0.7f});
-    m_debug.DrawLine({0, 0, 0}, {0, 0.0, 1}, {0, 0, 1.f, 0.7f});
+    m_debug.DrawLine({0, 0, 0}, {1, 0.0, 0}, {1.f, 0, 0, 0.7f}, 5);
+    m_debug.DrawLine({0, 0, 0}, {0, 1.0, 0}, {0, 1.f, 0, 0.7f}, 5);
+    m_debug.DrawLine({0, 0, 0}, {0, 0.0, 1}, {0, 0, 1.f, 0.7f}, 5);
     m_debug.DrawBox({0, 0, 0}, {10, 10, 5}, {1.f, 1.f, 0, 0.8f});
     m_debug.DrawBox({0, 10, 0}, {5, 5, 5}, {1.f, 1.f, 1.f, 1.f});
+    m_debug.DrawArrow({1, 0, 0}, {2, 0.0, 0}, {1.f, 0, 0, 0.7f}, 5);
+    m_debug.DrawArrow({1, 0, 0}, {1, 1.0, 0}, {0, 1.f, 0, 0.7f}, 5);
+    m_debug.DrawArrow({1, 0, 0}, {1, 0.0, 1}, {0, 0, 1.f, 0.7f}, 5);
     //m_debug.DrawArrow({0.4, 1.1, 0.4}, {-4.4, 4.0, 7.4}, {1.f, 1.f, 1.f, 1.f});
     //m_debug.DrawBox({1.f, 1.f, 2.f}, {0.5, 0.1, 0.5}, {1.f, 1.f, 1.f, 1.f});
     m_debug.End(m_engine);

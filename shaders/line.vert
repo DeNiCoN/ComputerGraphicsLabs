@@ -44,7 +44,7 @@ void main() {
     float len = length(dir * ubo.resolution);
 
     vec2 point = positions[gl_VertexIndex % 6];
-    point = vec2(point.x*len, point.y);
+    point = vec2(point.x*len, point.y * width);
     point = rotate(point, dir * ubo.resolution);
     point.xy /= ubo.resolution;
 

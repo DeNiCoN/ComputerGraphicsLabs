@@ -5,6 +5,7 @@ layout(binding = 0) uniform UniformBufferObject
     mat4 model;
     mat4 view;
     mat4 proj;
+    vec2 resolution;
 } ubo;
 
 layout(location = 0) in vec4 color;
@@ -15,12 +16,12 @@ layout(location = 3) in float width;
 layout(location = 0) out vec4 colorOut;
 
 vec2 positions[6] = vec2[](
-    vec2(1.0, 1.0),
-    vec2(1.0, -1.0),
-    vec2(-1.0, -1.0),
-    vec2(-1.0, -1.0),
-    vec2(-1.0, 1.0),
-    vec2(1.0, 1.0)
+    vec2(1.0, 1),
+    vec2(1.0, -1),
+    vec2(0.0, -1),
+    vec2(0.0, -1),
+    vec2(0.0, 1),
+    vec2(1.0, 1)
 );
 
 vec2 rotate(vec2 i, vec2 dir) {
@@ -34,15 +35,29 @@ void main() {
     vec4 fromP = ubo.proj * ubo.view * vec4(from, 1);
     vec4 toP = ubo.proj * ubo.view * vec4(to, 1);
 
-    vec2 from2d = fromP.xy/fromP.w;
-    vec2 to2d = toP.xy/fromP.w;
-    vec2 dir = to2d - from2d;
-    float len = length(dir);
+    vec4 fromC = fromP;
+    fromC.xyz /= fromP.w;
+    vec4 toC = toP;
+    toC.xyz /= toP.w;
 
-    vec2 point = positions[gl_VertexIndex];
-    point = vec2(point.x*len, point.y*width);
-    point = rotate(point, dir);
+    vec2 dir = toC.xy - fromC.xy;
+    float len = length(dir * ubo.resolution);
 
-    gl_Position = vec4(point, 0, 1);
+    vec2 point = positions[gl_VertexIndex % 6];
+    point = vec2(point.x*len, point.y * width);
+    point = rotate(point, dir * ubo.resolution);
+    point.xy /= ubo.resolution;
+
+    if (gl_VertexIndex == 0 || gl_VertexIndex == 1 || gl_VertexIndex == 5) {
+        vec4 result = vec4(fromC.xy + point, toC.z, toC.w);
+        result.xzy *= result.w;
+        gl_Position = result;
+    }
+    else {
+        vec4 result = vec4(fromC.xy + point, fromC.z, fromC.w);;
+        result.xzy *= result.w;
+        gl_Position = result;
+    }
+
     colorOut = color;
 }
