@@ -503,7 +503,8 @@ void Engine::CreateRenderPass()
 }
 
 vk::UniquePipeline Engine::CreateWholeScreenPipeline(vk::ShaderModule vertexModule,
-                                                  vk::ShaderModule fragmentModule)
+                                                     vk::ShaderModule fragmentModule,
+                                                     vk::PipelineLayout pipelineLayout)
 {
     vk::PipelineShaderStageCreateInfo vertCreateInfo;
     vertCreateInfo.stage = vk::ShaderStageFlagBits::eVertex;
@@ -563,11 +564,6 @@ vk::UniquePipeline Engine::CreateWholeScreenPipeline(vk::ShaderModule vertexModu
     colorBlendingInfo.attachmentCount = 1;
     colorBlendingInfo.pAttachments = &colorBlendAttachment;
 
-    vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
-    pipelineLayoutInfo.setSetLayouts(*m_descriptorSetLayout);
-
-    m_pipelineLayout = m_device->createPipelineLayoutUnique(pipelineLayoutInfo);
-
     vk::PipelineDepthStencilStateCreateInfo depthStencil;
     depthStencil.depthTestEnable = VK_TRUE;
     depthStencil.depthWriteEnable = VK_TRUE;
@@ -586,7 +582,7 @@ vk::UniquePipeline Engine::CreateWholeScreenPipeline(vk::ShaderModule vertexModu
     pipelineInfo.pMultisampleState = &multisamplingInfo;
     pipelineInfo.pColorBlendState = &colorBlendingInfo;
     pipelineInfo.pDepthStencilState = &depthStencil;
-    pipelineInfo.layout = *m_pipelineLayout;
+    pipelineInfo.layout = pipelineLayout;
     pipelineInfo.renderPass = *m_renderPass;
     pipelineInfo.subpass = 0;
 
@@ -987,19 +983,12 @@ void Engine::CreateWholeScreenPipelines()
             Files::Local("shaders/whole.vert"),
             shaderc_shader_kind::shaderc_glsl_vertex_shader));
 
-    auto grid = CreateShaderModule(
-        ShaderCompiler::CompileFromFile(
-            Files::Local("shaders/grid.frag"),
-            shaderc_shader_kind::shaderc_glsl_fragment_shader));
-
-    m_gridPipeline = CreateWholeScreenPipeline(*whole, *grid);
-
     auto torus = CreateShaderModule(
         ShaderCompiler::CompileFromFile(
             Files::Local("shaders/torus.frag"),
             shaderc_shader_kind::shaderc_glsl_fragment_shader));
 
-    m_torusPipeline = CreateWholeScreenPipeline(*whole, *torus);
+    m_torusPipeline = CreateWholeScreenPipeline(*whole, *torus, *m_pipelineLayout);
 }
 
 void Engine::Init(GLFWwindow* window)
@@ -1338,10 +1327,6 @@ void Engine::BeginRenderPass(vk::CommandBuffer cmd)
                                             *m_pipelineLayout, 0, m_descriptorSets[i],
                                             nullptr);
 
-    m_commandBuffers[i]->bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                                            *m_pipelineLayout, 0, m_descriptorSets[i],
-                                            nullptr);
-
     {
     TracyVkZone(m_tracyCtxs[i], *m_commandBuffers[i], "Normal");
     m_commandBuffers[i]->drawIndexed(static_cast<uint32_t>(g_indices.size()), 1, 0, 0, 0);
@@ -1352,12 +1337,6 @@ void Engine::BeginRenderPass(vk::CommandBuffer cmd)
     TracyVkZone(m_tracyCtxs[i], *m_commandBuffers[i], "Torus");
     m_commandBuffers[i]->draw(3, 1, 0, 0);
     }
-
-    m_commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_gridPipeline);
-    {
-    TracyVkZone(m_tracyCtxs[i], *m_commandBuffers[i], "Grid");
-    m_commandBuffers[i]->draw(3, 1, 0, 0);
-    }
 }
 
 void Engine::EndRenderPass(vk::CommandBuffer cmd)
@@ -1365,4 +1344,15 @@ void Engine::EndRenderPass(vk::CommandBuffer cmd)
     auto i = m_currentImageIndex;
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *m_commandBuffers[i]);
     m_commandBuffers[i]->endRenderPass();
+}
+
+vk::UniquePipelineLayout Engine::CreatePushConstantsLayout(
+    const vk::ArrayProxyNoTemporaries<const vk::PushConstantRange>
+    &pushConstantRanges) const
+{
+    vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
+    pipelineLayoutInfo.setSetLayouts(*m_descriptorSetLayout);
+    pipelineLayoutInfo.setPushConstantRanges(pushConstantRanges);
+
+    return m_device->createPipelineLayoutUnique(pipelineLayoutInfo);
 }

@@ -13,6 +13,12 @@ layout(binding = 0) uniform UniformBufferObject
     mat4 proj;
 } ubo;
 
+layout( push_constant ) uniform Constants {
+    vec3 xcolor;
+    vec3 zcolor;
+    vec3 grid_color;
+} constants;
+
 vec4 grid(vec3 fragPos3D, float scale) {
     vec2 coord = fragPos3D.xz * scale; // use the scale variable to set the distance between the lines
     vec2 derivative = fwidth(coord);
@@ -20,13 +26,13 @@ vec4 grid(vec3 fragPos3D, float scale) {
     float line = min(grid.x, grid.y);
     float minimumz = min(derivative.y, 1);
     float minimumx = min(derivative.x, 1);
-    vec4 color = vec4(0.2, 0.2, 0.2, 1.0 - min(line, 1.0));
+    vec4 color = vec4(constants.grid_color, 1.0 - min(line, 1.0));
     // z axis
     if(fragPos3D.x > -0.1 * minimumx && fragPos3D.x < 0.1 * minimumx)
-        color.z = 1.0;
+        color.xyz = constants.zcolor;
     // x axis
     if(fragPos3D.z > -0.1 * minimumz && fragPos3D.z < 0.1 * minimumz)
-        color.x = 1.0;
+        color.xyz = constants.xcolor;
     return color;
 }
 

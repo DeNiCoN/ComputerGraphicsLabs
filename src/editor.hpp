@@ -1,6 +1,7 @@
 #pragma once
 #include "engine.hpp"
 #include "debug_pipelines.hpp"
+#include "editor_object.hpp"
 
 class Editor
 {
@@ -21,6 +22,7 @@ private:
     void InitEngine();
     void InitPipelines();
     void InitImGui();
+    void InitDefaultObjects();
     void Init()
     {
         InitWindow();
@@ -28,14 +30,55 @@ private:
         InitEngine();
         InitPipelines();
         InitImGui();
+
+        InitDefaultObjects();
     }
     void InitClock();
     void UpdateClock();
     void Update(float delta);
     void ImGuiFrame();
+    void ImGuiEditorObjects();
     void DrawFrame(float lag);
     void Loop();
     void Terminate();
+
+
+    class ObjectEntry
+    {
+    public:
+        std::string name;
+        EditorObject::Ptr object;
+        bool is_enabled = true;
+    };
+
+    class ObjectGroup
+    {
+        using Objects = std::vector<ObjectEntry>;
+    public:
+        using iterator = Objects::iterator;
+        glm::vec3 GetSelectedPosition();
+        glm::vec3 GetSelectedBBox();
+
+        std::size_t size() const { return m_objects.size(); }
+        iterator begin() { return m_objects.begin(); }
+        iterator end() { return m_objects.end(); }
+        ObjectEntry& operator[](std::size_t i) { return m_objects[i]; }
+
+        void Add(std::string_view name, const EditorObject::Ptr& ptr)
+        {
+            m_objects.push_back(ObjectEntry{std::string(name), ptr});
+        }
+        bool IsSelected(std::size_t i) const { return m_selected.contains(i); }
+        bool Unselect(std::size_t i) { return m_selected.erase(i); }
+        bool Select(std::size_t i) { return m_selected.insert(i).second; }
+        void ClearSelected() { m_selected.clear(); }
+
+    private:
+        Objects m_objects;
+        std::unordered_set<std::size_t> m_selected;
+    };
+
+    ObjectGroup m_objects;
 
     Camera m_camera;
     unsigned m_width = 800;

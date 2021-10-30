@@ -289,6 +289,9 @@ void DebugPipelines::WriteCmdBuffer(vk::CommandBuffer cmd, Engine& engine)
     clearRect.rect.extent = extent;
 
     cmd.clearAttachments(clearAttachment, clearRect);
+    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                           engine.GetPipelineLayout(), 0, engine.GetCurrentDescriptorSet(),
+                           nullptr);
 
     if (m_lines.size() > 0)
     {

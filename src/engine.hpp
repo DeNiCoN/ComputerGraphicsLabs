@@ -33,6 +33,7 @@ public:
     TracyVkCtx GetCurrentTracyContext() { return m_tracyCtxs[m_currentImageIndex]; }
     unsigned GetCurrentFrame() const { return m_currentFrame; }
     unsigned GetCurrentImage() const { return m_currentImageIndex; }
+    vk::DescriptorSet GetCurrentDescriptorSet() const { return m_descriptorSets[m_currentImageIndex]; }
     unsigned GetMaxFramesInFlight() const { return m_max_frames_in_flight; }
     const std::vector<vk::UniqueImageView>& GetSwapChainImageViews()
     {
@@ -117,6 +118,14 @@ public:
     vk::UniqueImageView CreateImageView(vk::Image, vk::Format,
                                         vk::ImageAspectFlags);
 
+    vk::UniquePipeline CreateWholeScreenPipeline(vk::ShaderModule vertexModule,
+                                                 vk::ShaderModule fragmentModule,
+                                                 vk::PipelineLayout);
+
+    vk::UniquePipelineLayout CreatePushConstantsLayout(
+        const vk::ArrayProxyNoTemporaries<const vk::PushConstantRange>
+        &pushConstantRanges_) const;
+
 private:
     std::vector<const char*> GetRequiredExtensions();
     void CreateInstance();
@@ -127,8 +136,6 @@ private:
     void CreateSwapChain();
     void CreateImageViews();
     void CreateRenderPass();
-    vk::UniquePipeline CreateWholeScreenPipeline(vk::ShaderModule vertexModule,
-                                                 vk::ShaderModule fragmentModule);
     void CreateFramebuffers();
     void CreateCommandPool();
     void CreateDepthResources();

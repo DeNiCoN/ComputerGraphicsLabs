@@ -5,6 +5,7 @@
 #include "bindings/imgui_impl_vulkan.h"
 #include "bindings/imgui_impl_glfw.h"
 #include <Tracy.hpp>
+#include "grid_object.hpp"
 
 void Editor::InitWindow()
 {
@@ -64,6 +65,9 @@ void Editor::OnMouseMove(double xpos, double ypos)
     m_old_xpos = xpos;
     m_old_ypos = ypos;
 
+    if (ImGui::GetIO().WantCaptureMouse)
+        return;
+
     int state = glfwGetMouseButton(m_window, GLFW_MOUSE_BUTTON_LEFT);
     if (state == GLFW_PRESS)
     {
@@ -104,7 +108,7 @@ void Editor::Update(float delta)
 {
     ZoneScoped;
     int state = glfwGetMouseButton(m_window, GLFW_MOUSE_BUTTON_LEFT);
-    if (state == GLFW_PRESS)
+    if (state == GLFW_PRESS && !ImGui::GetIO().WantCaptureMouse)
     {
         glfwSetInputMode(m_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     }
@@ -207,11 +211,20 @@ void Editor::InitImGui()
     ImGui_ImplVulkan_DestroyFontUploadObjects();
 }
 
+void Editor::InitDefaultObjects()
+{
+    m_objects.Add("Grid", std::make_shared<GridObject>(m_engine));
+}
+
 void Editor::ImGuiFrame()
 {
     ImGui_ImplGlfw_NewFrame();
     ImGui_ImplVulkan_NewFrame();
     ImGui::NewFrame();
+    ImGui::ShowDemoWindow();
+
+    ImGuiEditorObjects();
+
     ImGui::Begin("Shaders");
     ImGui::Text("Average %.3f ms/frame (%.1f FPS)",
                 1000.0f / ImGui::GetIO().Framerate,
@@ -224,6 +237,10 @@ void Editor::ImGuiFrame()
             m_engine.CreateGraphicsPipeline();
             m_engine.CreateWholeScreenPipelines();
             m_debug.Recreate(m_engine);
+            for (auto entry : m_objects)
+            {
+                entry.object->Recreate(m_engine);
+            }
         }
         catch(const vk::Error& e)
         {
@@ -263,6 +280,50 @@ void Editor::ImGuiFrame()
         if (ImGui::SliderFloat("FOV", &m_camera.m_fov, 0.01, std::numbers::pi - 0.2))
         {
             m_camera.SetPerspective(m_camera.m_fov, AspectRatio(), 0.01, 100);
+        }
+    }
+    ImGui::End();
+}
+
+void Editor::ImGuiEditorObjects()
+{
+    if (ImGui::Begin("Objects"))
+    {
+        for (int i = 0; i < m_objects.size(); i++)
+        {
+            if (ImGui::IsItemActive() && !ImGui::IsItemHovered())
+            {
+                int n_next = i + (ImGui::GetMouseDragDelta(0).y < 0.f ? -1 : 1);
+                if (n_next >= 0 && n_next < m_objects.size())
+                {
+                    std::swap(m_objects[i], m_objects[n_next]);
+                    m_objects.Unselect(i);
+                    m_objects.Select(n_next);
+                    ImGui::ResetMouseDragDelta();
+                    continue;
+                }
+            }
+
+            bool is_selected = m_objects.IsSelected(i);
+            if (ImGui::Selectable(m_objects[i].name.c_str(), is_selected))
+            {
+                if (is_selected)
+                    m_objects.Unselect(i);
+                else
+                    m_objects.Select(i);
+            }
+
+            ImGui::SameLine();
+            ImGui::Checkbox("Visible", &m_objects[i].is_enabled);
+
+            if (is_selected)
+            {
+                if (ImGui::Begin(m_objects[i].name.c_str()))
+                {
+                    m_objects[i].object->ImGuiOptions();
+                }
+                ImGui::End();
+            }
         }
     }
     ImGui::End();
@@ -311,6 +372,13 @@ void Editor::DrawFrame(float lag)
     //m_engine.DrawFrame(lag);
     auto cmd = m_engine.BeginFrame();
     m_engine.BeginRenderPass(cmd);
+
+    for (auto& entry : m_objects)
+    {
+        if (entry.is_enabled)
+            entry.object->Draw(cmd, m_engine);
+    }
+
     m_debug.WriteCmdBuffer(cmd, m_engine);
     m_engine.EndRenderPass(cmd);
     m_engine.EndFrame();
