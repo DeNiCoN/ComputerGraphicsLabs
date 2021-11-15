@@ -11,11 +11,64 @@
 #include <TracyVulkan.hpp>
 #include <vk_mem_alloc.h>
 
+struct AllocatedBuffer
+{
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkDevice device;
+    VmaAllocation allocation = {};
+    VmaAllocator allocator = {};
+
+    AllocatedBuffer() = default;
+    AllocatedBuffer(const AllocatedBuffer&) = delete;
+    AllocatedBuffer(AllocatedBuffer&& rhs)
+    {
+        swap(*this, rhs);
+    }
+
+    friend void swap(AllocatedBuffer& lhs, AllocatedBuffer& rhs)
+    {
+        using std::swap;
+
+        swap(lhs.buffer, rhs.buffer);
+        swap(lhs.device, rhs.device);
+        swap(lhs.allocation, rhs.allocation);
+        swap(lhs.allocator, rhs.allocator);
+    }
+
+    AllocatedBuffer& operator=(AllocatedBuffer&& other)
+    {
+        AllocatedBuffer tmp(std::move(other));
+        swap(tmp, *this);
+        return *this;
+    };
+
+    ~AllocatedBuffer()
+    {
+        if (buffer != VK_NULL_HANDLE)
+        {
+            vkDestroyBuffer(device, buffer, nullptr);
+            vmaFreeMemory(allocator, allocation);
+        }
+    }
+};
+
+using UniqueAllocatedBuffer = std::unique_ptr<AllocatedBuffer>;
+
 class Engine
 {
+private:
+    struct FrameData {
+        vk::UniqueCommandPool commandPool;
+        vk::UniqueCommandBuffer commandBuffer;
+        vk::UniqueFence renderFence;
+        vk::UniqueSemaphore presentSemaphore, renderSemaphore;
+
+        AllocatedBuffer sceneBuffer;
+        vk::DescriptorSet globalDescriptor;
+    };
+
 public:
     void Init(GLFWwindow* window);
-    void DrawFrame(float lag);
     void Terminate();
     void Resize() { m_framebufferResized = true; }
 
@@ -29,11 +82,11 @@ public:
     std::size_t GetImageCount() const { return m_swapChainImages.size(); }
     vk::RenderPass GetRenderPass() { return *m_renderPass; }
     vk::Extent2D GetSwapChainExtent() { return m_swapChainExtent; }
-    vk::PipelineLayout GetPipelineLayout() { return *m_pipelineLayout; }
-    TracyVkCtx GetCurrentTracyContext() { return m_tracyCtxs[m_currentImageIndex]; }
+    vk::DescriptorSetLayout GetGlobalSetLayout() const { return *m_globalSetLayout; }
+    TracyVkCtx GetCurrentTracyContext() { return m_tracyCtxs[m_currentFrame]; }
     unsigned GetCurrentFrame() const { return m_currentFrame; }
     unsigned GetCurrentImage() const { return m_currentImageIndex; }
-    vk::DescriptorSet GetCurrentDescriptorSet() const { return m_descriptorSets[m_currentImageIndex]; }
+    vk::DescriptorSet GetCurrentGlobalSet() { return CurrentFrame().globalDescriptor; }
     unsigned GetMaxFramesInFlight() const { return m_max_frames_in_flight; }
     const std::vector<vk::UniqueImageView>& GetSwapChainImageViews()
     {
@@ -54,7 +107,7 @@ public:
         vk::CommandBufferAllocateInfo allocInfo;
         allocInfo.level = vk::CommandBufferLevel::ePrimary;
         allocInfo.commandBufferCount = 1;
-        allocInfo.setCommandPool(*m_commandPool);
+        allocInfo.setCommandPool(*m_uploadCommandPool);
 
         auto commandBuffers = m_device->allocateCommandBuffersUnique(allocInfo);
         auto commandBuffer = *commandBuffers.front();
@@ -71,21 +124,30 @@ public:
         vk::SubmitInfo submitInfo;
         submitInfo.setCommandBuffers(commandBuffer);
 
-        m_graphicsQueue.submit(submitInfo);
-        m_graphicsQueue.waitIdle();
-    }
-    void CreateGraphicsPipeline();
-    void CreateWholeScreenPipelines();
+        m_graphicsQueue.submit(submitInfo, *m_uploadFence);
 
-    struct UniformBufferObject
+        auto r = m_device->waitForFences(*m_uploadFence, true, UINT64_MAX);
+        m_device->resetFences(*m_uploadFence);
+        m_device->resetCommandPool(*m_uploadCommandPool);
+    }
+
+    struct SceneData
     {
-        alignas(16) glm::mat4 model;
         alignas(16) glm::mat4 view;
         alignas(16) glm::mat4 proj;
+        alignas(16) glm::mat4 viewInv;
+        alignas(16) glm::mat4 projInv;
+        alignas(16) glm::mat4 projview;
         alignas(8) glm::vec2 resolution;
+        alignas(4) float time;
     };
 
-    UniformBufferObject m_ubo;
+    SceneData m_ubo;
+
+    struct PushConstants
+    {
+        alignas(16) glm::mat4 model;
+    };
 
     vk::CommandBuffer BeginFrame();
     void EndFrame();
@@ -126,6 +188,33 @@ public:
         const vk::ArrayProxyNoTemporaries<const vk::PushConstantRange>
         &pushConstantRanges_) const;
 
+    AllocatedBuffer CreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
+                                 VmaMemoryUsage memoryUsage);
+    void CopyBuffer(vk::Buffer srcBuffer, vk::Buffer dstBuffer, vk::DeviceSize size);
+
+    template<typename T>
+    AllocatedBuffer CopyToGPU(const std::vector<T>& data, vk::BufferUsageFlags flags)
+    {
+        auto data_size = data.size() * sizeof(data[0]);
+        AllocatedBuffer result = CreateBuffer(
+            data_size, flags | vk::BufferUsageFlagBits::eTransferDst,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+
+        AllocatedBuffer stage = CreateBuffer(
+            data_size, vk::BufferUsageFlagBits::eTransferSrc,
+            VMA_MEMORY_USAGE_CPU_ONLY);
+
+        void* data_ptr;
+        vmaMapMemory(GetVmaAllocator(), stage.allocation, &data_ptr);
+        memcpy(data_ptr, data.data(), data_size);
+        vmaUnmapMemory(GetVmaAllocator(), stage.allocation);
+
+        CopyBuffer(stage.buffer, result.buffer, data_size);
+
+        return result;
+    }
+
+
 private:
     std::vector<const char*> GetRequiredExtensions();
     void CreateInstance();
@@ -140,21 +229,13 @@ private:
     void CreateCommandPool();
     void CreateDepthResources();
     void CreateCommandBuffers();
-    void BeginRecreateCommandBuffer(uint32_t imageIndex);
-    void EndRecreateCommandBuffer(uint32_t imageIndex);
+    void RecreateCommandBuffer();
     void CreateSyncObjects();
-    void CreateVertexBuffer();
-    void CreateIndexBuffer();
     void CreateDescriptorSetLayout();
     void CreateUniformBuffers();
     void CreateDescriptorPool();
     void CreateDescriptorSets();
     void CreateVmaAllocator();
-
-    void CreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
-                      vk::MemoryPropertyFlags properties,
-                      vk::UniqueBuffer&, vk::UniqueDeviceMemory&);
-    void CopyBuffer(vk::Buffer srcBuffer, vk::Buffer dstBuffer, vk::DeviceSize size);
 
     void RecreateSwapChain()
     {
@@ -170,8 +251,6 @@ private:
         CreateSwapChain();
         CreateImageViews();
         CreateRenderPass();
-        CreateGraphicsPipeline();
-        CreateWholeScreenPipelines();
         CreateDepthResources();
         CreateFramebuffers();
         CreateUniformBuffers();
@@ -188,11 +267,9 @@ private:
 
     void Loop();
 
-    void UpdateUniformBuffer(uint32_t currentImage);
+    void WriteGlobalUniformBuffer();
 
 
-    const unsigned m_max_frames_in_flight = 2;
-    std::size_t m_currentFrame = 0;
     bool m_framebufferResized = false;
 
     GLFWwindow* m_window;
@@ -202,9 +279,6 @@ private:
     vk::UniqueInstance m_instance;
     vk::UniqueDevice m_device;
 
-    std::vector<vk::UniqueSemaphore> m_imageAvailableSemaphores;
-    std::vector<vk::UniqueSemaphore> m_renderFinishedSemaphores;
-    std::vector<vk::UniqueFence> m_inFlightFences;
     std::vector<std::optional<vk::Fence>> m_imagesInFlight;
 
     vk::DispatchLoaderDynamic m_dispatcher;
@@ -215,30 +289,30 @@ private:
     vk::Queue m_graphicsQueue;
     vk::Queue m_presentQueue;
     vk::UniqueSwapchainKHR m_swapChain;
+
+    static const unsigned m_max_frames_in_flight = 2;
+    std::size_t m_currentFrame = 0;
+    std::array<FrameData, m_max_frames_in_flight> m_frames;
+
+    FrameData& CurrentFrame()
+    {
+        return m_frames[m_currentFrame];
+    }
+
+    uint32_t m_currentImageIndex;
     std::vector<vk::Image> m_swapChainImages;
     std::vector<vk::UniqueImageView> m_swapChainImageViews;
-    std::vector<vk::UniqueBuffer> m_uniformBuffers;
-    std::vector<vk::UniqueDeviceMemory> m_uniformBuffersMemory;
+    std::vector<vk::UniqueFramebuffer> m_swapChainFramebuffers;
+
     vk::UniqueImage m_depthImage;
     vk::UniqueDeviceMemory m_depthImageMemory;
     vk::UniqueImageView m_depthImageView;
     vk::Format m_swapChainImageFormat;
     vk::Extent2D m_swapChainExtent;
     vk::UniqueRenderPass m_renderPass;
-    vk::UniqueDescriptorSetLayout m_descriptorSetLayout;
     vk::UniquePipelineLayout m_pipelineLayout;
-    vk::UniquePipeline m_graphicsPipeline;
-    vk::UniquePipeline m_gridPipeline;
-    vk::UniquePipeline m_torusPipeline;
-    std::vector<vk::UniqueFramebuffer> m_swapChainFramebuffers;
-    vk::UniqueCommandPool m_commandPool;
-    std::vector<vk::UniqueCommandBuffer> m_commandBuffers;
-    vk::UniqueBuffer m_vertexBuffer;
-    vk::UniqueDeviceMemory m_vertexBufferMemory;
-    vk::UniqueBuffer m_indexBuffer;
-    vk::UniqueDeviceMemory m_indexBufferMemory;
     vk::UniqueDescriptorPool m_descriptorPool;
-    std::vector<vk::DescriptorSet> m_descriptorSets;
+    vk::UniqueDescriptorSetLayout m_globalSetLayout;
     vk::UniqueDescriptorPool m_imguiDescriptorPool;
 #ifdef NDEBUG
     bool m_validationLayers = false;
@@ -257,7 +331,9 @@ private:
     std::vector<TracyVkCtx> m_tracyCtxs;
 
     VmaAllocator m_vmaAllocator;
-    uint32_t m_currentImageIndex;
 
     std::vector<std::function<void(Engine&)>> m_recreateCallbacks;
+
+    vk::UniqueCommandPool m_uploadCommandPool;
+    vk::UniqueFence m_uploadFence;
 };

@@ -77,6 +77,7 @@ private:
     std::array<vk::VertexInputAttributeDescription, 4> GetArrowAttributeDescriptions();
     std::array<vk::VertexInputAttributeDescription, 3> GetBoxAttributeDescriptions();
 
+    vk::UniquePipelineLayout m_pipelineLayout;
     vk::UniquePipeline m_linePipeline;
     vk::UniquePipeline m_arrowPipeline;
     vk::UniquePipeline m_boxPipeline;

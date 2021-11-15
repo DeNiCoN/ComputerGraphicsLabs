@@ -6,16 +6,17 @@ layout (location = 2) out vec3 far;
 
 layout(binding = 0) uniform UniformBufferObject
 {
-    mat4 model;
     mat4 view;
     mat4 proj;
+    mat4 viewInv;
+    mat4 projInv;
+    mat4 projview;
     vec2 resolution;
-} ubo;
+    float time;
+} scene;
 
 vec3 UnprojectPoint(float x, float y, float z, mat4 view, mat4 projection) {
-    mat4 viewInv = inverse(view);
-    mat4 projInv = inverse(projection);
-    vec4 unprojectedPoint = viewInv * projInv * vec4(x, y, z, 1.0);
+    vec4 unprojectedPoint = scene.viewInv * scene.projInv * vec4(x, y, z, 1.0);
     return unprojectedPoint.xyz / unprojectedPoint.w;
 }
 
@@ -25,7 +26,7 @@ void main()
     outUV = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
     vec2 position = outUV * 2.0f + -1.f;
 
-    near = UnprojectPoint(position.x, position.y, 0.f, ubo.view, ubo.proj);
-    far = UnprojectPoint(position.x, position.y, 1.f, ubo.view, ubo.proj);
+    near = UnprojectPoint(position.x, position.y, 0.f, scene.view, scene.proj);
+    far = UnprojectPoint(position.x, position.y, 1.f, scene.view, scene.proj);
     gl_Position = vec4(position, 0.0f, 1.0f);
 }

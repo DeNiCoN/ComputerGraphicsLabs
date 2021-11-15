@@ -2,11 +2,14 @@
 
 layout(binding = 0) uniform UniformBufferObject
 {
-    mat4 model;
     mat4 view;
     mat4 proj;
+    mat4 viewInv;
+    mat4 projInv;
+    mat4 projview;
     vec2 resolution;
-} ubo;
+    float time;
+} scene;
 
 layout(location = 0) in vec4 color;
 layout(location = 1) in vec3 center;
@@ -34,6 +37,6 @@ vec3 positions[16] = vec3[](
 );
 
 void main() {
-    gl_Position = ubo.proj * ubo.view * vec4(center + positions[gl_VertexIndex] * dimentions, 1);
+    gl_Position = scene.projview * vec4(center + positions[gl_VertexIndex] * dimentions, 1);
     colorOut = color;
 }

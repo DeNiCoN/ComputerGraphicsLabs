@@ -6,6 +6,8 @@
 #include "bindings/imgui_impl_glfw.h"
 #include <Tracy.hpp>
 #include "grid_object.hpp"
+#include "mesh_object.hpp"
+#include <glm/gtx/closest_point.hpp>
 
 void Editor::InitWindow()
 {
@@ -143,13 +145,18 @@ void Editor::Update(float delta)
         move = glm::normalize(move);
 
     m_camera.position += move * delta;
-    m_engine.m_ubo.model = glm::identity<glm::mat4>();
-    m_engine.m_ubo.model = glm::translate(m_engine.m_ubo.model, glm::vec3{3, 2, 0});
-    m_engine.m_ubo.model = glm::scale(m_engine.m_ubo.model, glm::vec3{1.f, 1.f, 1.f});
     m_engine.m_ubo.view = m_camera.GetView();
     m_engine.m_ubo.proj = m_camera.GetProjection();
+    m_engine.m_ubo.time += delta;
+
     auto extent = m_engine.GetSwapChainExtent();
     m_engine.m_ubo.resolution = glm::vec2(extent.width, extent.height);
+
+    //Check which axis does cursor touch
+    if (m_objects.SelectedSize())
+    {
+        m_objects.GetSelectedPosition();
+    }
 }
 
 void Editor::InitImGui()
@@ -213,6 +220,39 @@ void Editor::InitImGui()
 
 void Editor::InitDefaultObjects()
 {
+
+
+    m_mesh_manager.NewFromObj("Soldier", Files::Local("res/models/PinkSoldier_sketch.obj"));
+    m_mesh_manager.NewFromObj("Armor", Files::Local("res/models/armor 2021.obj"));
+    m_mesh_manager.NewFromObj("Octahedron", Files::Local("res/models/octahedron.obj"));
+    m_material_manager.FromShaders("Default", Files::Local("res/shaders/default.vert"),
+                                   Files::Local("res/shaders/default.frag"));
+
+    auto armor = std::make_shared<MeshObject>(
+        m_mesh_renderer,
+        m_mesh_manager.Get("Armor"),
+        m_material_manager.Get("Default"));
+
+    armor->position = {-4, 1, 5};
+    armor->scale = 0.1;
+    armor->yaw = 0.4;
+
+    m_objects.Add("Mesh1", std::move(armor));
+
+    auto soldier = std::make_shared<MeshObject>(
+        m_mesh_renderer,
+        m_mesh_manager.Get("Soldier"),
+        m_material_manager.Get("Default"));
+    soldier->position = {4, 1, 5};
+    soldier->scale = 0.03;
+
+    m_objects.Add("Soldier", std::move(soldier));
+
+    m_objects.Add("Octahedron", std::make_shared<MeshObject>(
+                      m_mesh_renderer,
+                      m_mesh_manager.Get("Octahedron"),
+                      m_material_manager.Get("Default")));
+
     m_objects.Add("Grid", std::make_shared<GridObject>(m_engine));
 }
 
@@ -234,9 +274,8 @@ void Editor::ImGuiFrame()
         m_engine.GetDevice().waitIdle();
         try
         {
-            m_engine.CreateGraphicsPipeline();
-            m_engine.CreateWholeScreenPipelines();
             m_debug.Recreate(m_engine);
+            m_material_manager.Recreate();
             for (auto entry : m_objects)
             {
                 entry.object->Recreate(m_engine);
@@ -291,38 +330,28 @@ void Editor::ImGuiEditorObjects()
     {
         for (int i = 0; i < m_objects.size(); i++)
         {
-            if (ImGui::IsItemActive() && !ImGui::IsItemHovered())
-            {
-                int n_next = i + (ImGui::GetMouseDragDelta(0).y < 0.f ? -1 : 1);
-                if (n_next >= 0 && n_next < m_objects.size())
-                {
-                    std::swap(m_objects[i], m_objects[n_next]);
-                    m_objects.Unselect(i);
-                    m_objects.Select(n_next);
-                    ImGui::ResetMouseDragDelta();
-                    continue;
-                }
-            }
-
+            ImGuiTreeNodeFlags node_flags = 0;
             bool is_selected = m_objects.IsSelected(i);
-            if (ImGui::Selectable(m_objects[i].name.c_str(), is_selected))
+            if (is_selected)
+                node_flags |= ImGuiTreeNodeFlags_Selected;
+
+            bool node_open = ImGui::TreeNodeEx(m_objects[i].name.c_str(),
+                                               node_flags);
+            if (ImGui::IsItemClicked(ImGuiMouseButton_Right)
+                && !ImGui::IsItemToggledOpen())
             {
-                if (is_selected)
-                    m_objects.Unselect(i);
-                else
+                m_objects.ClearSelected();
+                if (!is_selected)
                     m_objects.Select(i);
             }
 
-            ImGui::SameLine();
-            ImGui::Checkbox("Visible", &m_objects[i].is_enabled);
-
-            if (is_selected)
+            if (node_open)
             {
-                if (ImGui::Begin(m_objects[i].name.c_str()))
+                if (ImGui::Checkbox("Visible", &m_objects[i].is_enabled))
                 {
-                    m_objects[i].object->ImGuiOptions();
                 }
-                ImGui::End();
+                m_objects[i].object->ImGuiOptions();
+                ImGui::TreePop();
             }
         }
     }
@@ -356,22 +385,34 @@ void Editor::Loop()
 void Editor::DrawFrame(float lag)
 {
     m_debug.Begin();
-    m_debug.DrawLine({0, 0, 0}, {1, 0.0, 0}, {1.f, 0, 0, 0.7f}, 5);
-    m_debug.DrawLine({0, 0, 0}, {0, 1.0, 0}, {0, 1.f, 0, 0.7f}, 5);
-    m_debug.DrawLine({0, 0, 0}, {0, 0.0, 1}, {0, 0, 1.f, 0.7f}, 5);
-    m_debug.DrawBox({0, 0, 0}, {10, 10, 5}, {1.f, 1.f, 0, 0.8f});
-    m_debug.DrawBox({0, 10, 0}, {5, 5, 5}, {1.f, 1.f, 1.f, 1.f});
-    m_debug.DrawArrow({1, 0, 0}, {2, 0.0, 0}, {1.f, 0, 0, 0.7f}, 5);
-    m_debug.DrawArrow({1, 0, 0}, {1, 1.0, 0}, {0, 1.f, 0, 0.7f}, 5);
-    m_debug.DrawArrow({1, 0, 0}, {1, 0.0, 1}, {0, 0, 1.f, 0.7f}, 5);
-    //m_debug.DrawArrow({0.4, 1.1, 0.4}, {-4.4, 4.0, 7.4}, {1.f, 1.f, 1.f, 1.f});
-    //m_debug.DrawBox({1.f, 1.f, 2.f}, {0.5, 0.1, 0.5}, {1.f, 1.f, 1.f, 1.f});
+    if (m_objects.SelectedSize())
+    {
+        auto bbox = m_objects.GetSelectedBBox();
+        auto pos = m_objects.GetSelectedPosition();
+        m_debug.DrawLine(pos, pos + glm::vec3{1, 0.0, 0},
+                         {1.f, 0, 0, touch_x ? 1.0 : 0.5f}, 5);
+        m_debug.DrawLine(pos, pos + glm::vec3{0, 1.0, 0},
+                         {0, 1.f, 0, touch_y ? 1.0 : 0.5f}, 5);
+        m_debug.DrawLine(pos, pos + glm::vec3{0, 0.0, 1},
+                         {0, 0, 1.f, touch_z ? 1.0 : 0.5f}, 5);
+        m_debug.DrawBox(pos, bbox, {1.f, 1.f, 0, 0.8f});
+    }
     m_debug.End(m_engine);
+
+    m_mesh_renderer.Begin();
+    for (auto& obj : m_objects)
+    {
+        if (obj.is_enabled)
+            obj.object->Render(lag);
+    }
+    m_mesh_renderer.End();
 
     ImGui::Render();
     //m_engine.DrawFrame(lag);
     auto cmd = m_engine.BeginFrame();
     m_engine.BeginRenderPass(cmd);
+
+    m_mesh_renderer.WriteCmdBuffer(cmd, m_engine);
 
     for (auto& entry : m_objects)
     {
@@ -380,6 +421,7 @@ void Editor::DrawFrame(float lag)
     }
 
     m_debug.WriteCmdBuffer(cmd, m_engine);
+
     m_engine.EndRenderPass(cmd);
     m_engine.EndFrame();
 }

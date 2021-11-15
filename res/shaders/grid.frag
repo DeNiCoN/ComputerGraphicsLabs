@@ -8,10 +8,14 @@ layout(location = 0) out vec4 outColor;
 
 layout(binding = 0) uniform UniformBufferObject
 {
-    mat4 model;
     mat4 view;
     mat4 proj;
-} ubo;
+    mat4 viewInv;
+    mat4 projInv;
+    mat4 projview;
+    vec2 resolution;
+    float time;
+} scene;
 
 layout( push_constant ) uniform Constants {
     vec3 xcolor;
@@ -37,7 +41,7 @@ vec4 grid(vec3 fragPos3D, float scale) {
 }
 
 float computeDepth(vec3 pos) {
-    vec4 clip_space_pos = ubo.proj * ubo.view * vec4(pos.xyz, 1.0);
+    vec4 clip_space_pos = scene.projview * vec4(pos.xyz, 1.0);
     return (clip_space_pos.z / clip_space_pos.w);
 }
 
@@ -47,5 +51,5 @@ void main() {
     float fade = min(2 / length(fragPos3D - near), 1);
     outColor = grid(fragPos3D, 10) * float(t > 0) * float(fade);
     gl_FragDepth = computeDepth(fragPos3D);
-    //outColor = vec4(far, 1);
+    //outColor = vec4(scene.time, 0, 0, 1);
 }

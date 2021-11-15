@@ -26,6 +26,7 @@ public:
     virtual void ImGuiOptions() {};
     virtual void Recreate(Engine&) {};
     virtual void Draw(vk::CommandBuffer cmd, Engine&) {};
+    virtual void Render(float lag) {};
     virtual void Update(float delta) {};
     using Ptr = std::shared_ptr<EditorObject>;
 };

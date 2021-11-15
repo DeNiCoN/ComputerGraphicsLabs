@@ -8,7 +8,6 @@
 #include <ranges>
 #include "shader_compiler.hpp"
 #include "files.hpp"
-#include "vertex.hpp"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/norm.hpp>
@@ -589,111 +588,6 @@ vk::UniquePipeline Engine::CreateWholeScreenPipeline(vk::ShaderModule vertexModu
     return m_device->createGraphicsPipelineUnique(VK_NULL_HANDLE, pipelineInfo).value;
 }
 
-void Engine::CreateGraphicsPipeline()
-{
-    auto vertModule = CreateShaderModule(
-        ShaderCompiler::CompileFromFile(
-            Files::Local("shaders/triangle.vert"),
-            shaderc_shader_kind::shaderc_glsl_vertex_shader));
-
-    auto fragModule =
-        CreateShaderModule(
-            ShaderCompiler::CompileFromFile(
-                Files::Local("shaders/triangle.frag"),
-                shaderc_shader_kind::shaderc_glsl_fragment_shader));
-
-    vk::PipelineShaderStageCreateInfo vertCreateInfo;
-    vertCreateInfo.stage = vk::ShaderStageFlagBits::eVertex;
-    vertCreateInfo.module = *vertModule;
-    vertCreateInfo.pName = "main";
-
-    vk::PipelineShaderStageCreateInfo fragCreateInfo;
-    fragCreateInfo.stage = vk::ShaderStageFlagBits::eFragment;
-    fragCreateInfo.module = *fragModule;
-    fragCreateInfo.pName = "main";
-
-    vk::PipelineShaderStageCreateInfo shaderStages[] = {vertCreateInfo, fragCreateInfo};
-
-    vk::PipelineVertexInputStateCreateInfo vertexInputInfo;
-    auto bindingDescription = Vertex::GetBindingDescription();
-    auto attributeDescriptions = Vertex::GetAttributeDescriptions();
-    vertexInputInfo.vertexBindingDescriptionCount = 1;
-    vertexInputInfo.vertexAttributeDescriptionCount = attributeDescriptions.size();
-    vertexInputInfo.setVertexBindingDescriptions(bindingDescription);
-    vertexInputInfo.setVertexAttributeDescriptions(attributeDescriptions);
-
-    vk::PipelineInputAssemblyStateCreateInfo inputAssemblyInfo;
-    inputAssemblyInfo.topology = vk::PrimitiveTopology::eLineStrip;
-    inputAssemblyInfo.primitiveRestartEnable = VK_TRUE;
-
-    vk::Viewport viewport(0, 0, m_swapChainExtent.width, m_swapChainExtent.height, 0, 1);
-    vk::Rect2D scissor({0, 0}, m_swapChainExtent);
-    vk::PipelineViewportStateCreateInfo viewportStateInfo;
-    viewportStateInfo.viewportCount = 1;
-    viewportStateInfo.pViewports = &viewport;
-    viewportStateInfo.scissorCount = 1;
-    viewportStateInfo.pScissors = &scissor;
-
-    vk::PipelineRasterizationStateCreateInfo rasterizerInfo;
-    rasterizerInfo.depthClampEnable = VK_FALSE;
-    rasterizerInfo.rasterizerDiscardEnable = VK_FALSE;
-    rasterizerInfo.polygonMode = vk::PolygonMode::eLine;
-    rasterizerInfo.lineWidth = 1.0f;
-    rasterizerInfo.cullMode = vk::CullModeFlagBits::eBack;
-    rasterizerInfo.frontFace = vk::FrontFace::eCounterClockwise;
-    rasterizerInfo.depthBiasEnable = VK_FALSE;
-
-    vk::PipelineMultisampleStateCreateInfo multisamplingInfo{};
-    multisamplingInfo.sampleShadingEnable = VK_FALSE;
-    multisamplingInfo.rasterizationSamples = vk::SampleCountFlagBits::e1;
-
-    vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
-    colorBlendAttachment.colorWriteMask =
-        vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
-        vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
-
-    colorBlendAttachment.blendEnable = VK_TRUE;
-    colorBlendAttachment.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
-    colorBlendAttachment.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
-    colorBlendAttachment.colorBlendOp = vk::BlendOp::eAdd;
-    colorBlendAttachment.srcAlphaBlendFactor = vk::BlendFactor::eOne;
-    colorBlendAttachment.dstAlphaBlendFactor = vk::BlendFactor::eZero;
-    colorBlendAttachment.alphaBlendOp = vk::BlendOp::eAdd;
-
-    vk::PipelineColorBlendStateCreateInfo colorBlendingInfo;
-    colorBlendingInfo.logicOpEnable = VK_FALSE;
-    colorBlendingInfo.attachmentCount = 1;
-    colorBlendingInfo.pAttachments = &colorBlendAttachment;
-
-    vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
-    pipelineLayoutInfo.setSetLayouts(*m_descriptorSetLayout);
-
-    m_pipelineLayout = m_device->createPipelineLayoutUnique(pipelineLayoutInfo);
-
-    vk::PipelineDepthStencilStateCreateInfo depthStencil;
-    depthStencil.depthTestEnable = VK_TRUE;
-    depthStencil.depthWriteEnable = VK_TRUE;
-    depthStencil.depthCompareOp = vk::CompareOp::eLess;
-    depthStencil.depthBoundsTestEnable = VK_FALSE;
-    depthStencil.stencilTestEnable = VK_FALSE;
-
-    vk::GraphicsPipelineCreateInfo pipelineInfo;
-    pipelineInfo.stageCount = 2;
-    pipelineInfo.pStages = shaderStages;
-
-    pipelineInfo.pVertexInputState = &vertexInputInfo;
-    pipelineInfo.pInputAssemblyState = &inputAssemblyInfo;
-    pipelineInfo.pViewportState = &viewportStateInfo;
-    pipelineInfo.pRasterizationState = &rasterizerInfo;
-    pipelineInfo.pMultisampleState = &multisamplingInfo;
-    pipelineInfo.pColorBlendState = &colorBlendingInfo;
-    pipelineInfo.pDepthStencilState = &depthStencil;
-    pipelineInfo.layout = *m_pipelineLayout;
-    pipelineInfo.renderPass = *m_renderPass;
-    pipelineInfo.subpass = 0;
-
-    m_graphicsPipeline = m_device->createGraphicsPipelineUnique(VK_NULL_HANDLE, pipelineInfo).value;
-}
 
 void Engine::CreateFramebuffers()
 {
@@ -719,8 +613,10 @@ void Engine::CreateFramebuffers()
 
 void Engine::CreateCommandPool()
 {
-    // Here to properly deallocate command buffers during pool recreation
-    m_commandBuffers.clear();
+    for (auto& frame : m_frames)
+    {
+        frame.commandBuffer.reset();
+    }
 
     QueueFamilyIndices queueFamilyIndices =
         FindQueueFamilies(m_physicalDevice, *m_surface);
@@ -729,76 +625,55 @@ void Engine::CreateCommandPool()
     poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
     poolInfo.flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer;
 
-    m_commandPool = m_device->createCommandPoolUnique(poolInfo);
+    for (auto& frame : m_frames)
+    {
+        frame.commandPool = m_device->createCommandPoolUnique(poolInfo);
+    }
+
+    vk::CommandPoolCreateInfo uploadPoolInfo;
+    uploadPoolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
+
+    m_uploadCommandPool = m_device->createCommandPoolUnique(uploadPoolInfo);
 }
-
-//TODO Grid in shader
-//TODO Torus in shader
-const std::vector<Vertex> vertices = {
-    {{0, 0, 0}, {0, 0, 0}},
-    {{1, 0, 0}, {0, 0, 0}},
-    {{-1, 0, 0}, {0, 0, 0}},
-    {{0, 0, -1}, {0, 0, 0}},
-    {{0, 0, 1}, {0, 0, 0}},
-    {{0, 1, 0}, {0, 0, 0}},
-    {{0, -1, 0}, {0, 0, 0}},
-};
-
-const std::vector<uint16_t> g_indices = {
-    5, 1, 3, UINT16_MAX,
-    5, 3, 2, UINT16_MAX,
-    5, 2, 4, UINT16_MAX,
-    5, 4, 1, UINT16_MAX,
-    6, 3, 1, UINT16_MAX,
-    6, 2, 3, UINT16_MAX,
-    6, 4, 2, UINT16_MAX,
-    6, 1, 4
-};
 
 void Engine::CreateCommandBuffers()
 {
-    m_commandBuffers.resize(m_swapChainFramebuffers.size());
+    for (auto& frame : m_frames)
+    {
+        vk::CommandBufferAllocateInfo allocInfo;
+        allocInfo.commandPool = *frame.commandPool;
+        allocInfo.level = vk::CommandBufferLevel::ePrimary;
+        allocInfo.commandBufferCount = 1;
 
-    vk::CommandBufferAllocateInfo allocInfo;
-    allocInfo.commandPool = *m_commandPool;
-    allocInfo.level = vk::CommandBufferLevel::ePrimary;
-    allocInfo.commandBufferCount = m_commandBuffers.size();
-
-    m_commandBuffers = m_device->allocateCommandBuffersUnique(allocInfo);
+        frame.commandBuffer = std::move(m_device->allocateCommandBuffersUnique(allocInfo).front());
+    }
 }
 
-void Engine::BeginRecreateCommandBuffer(uint32_t i)
+void Engine::RecreateCommandBuffer()
 {
     ZoneScoped;
-    m_commandBuffers[i]->reset();
-    vk::CommandBufferBeginInfo beginInfo;
-    beginInfo.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit;
-    m_commandBuffers[i]->begin(beginInfo);
-
-}
-
-void Engine::EndRecreateCommandBuffer(uint32_t i)
-{
-
-    TracyVkCollect(m_tracyCtxs[i], *m_commandBuffers[i]);
-    m_commandBuffers[i]->end();
+    CurrentFrame().commandBuffer->reset();
 }
 
 void Engine::CreateSyncObjects()
 {
-    m_imageAvailableSemaphores.resize(m_max_frames_in_flight);
-    m_renderFinishedSemaphores.resize(m_max_frames_in_flight);
-    m_inFlightFences.resize(m_max_frames_in_flight);
     m_imagesInFlight.resize(m_swapChainImages.size());
 
     vk::FenceCreateInfo fenceInfo;
     fenceInfo.flags = vk::FenceCreateFlagBits::eSignaled;
-    for (size_t i = 0; i < m_max_frames_in_flight; i++)
+
+    vk::SemaphoreCreateInfo semaphoreInfo;
+
+    for (auto& frame : m_frames)
     {
-        m_imageAvailableSemaphores[i] = m_device->createSemaphoreUnique({});
-        m_renderFinishedSemaphores[i] = m_device->createSemaphoreUnique({});
-        m_inFlightFences[i] = m_device->createFenceUnique(fenceInfo);
+        frame.renderSemaphore = m_device->createSemaphoreUnique(semaphoreInfo);
+        frame.presentSemaphore = m_device->createSemaphoreUnique(semaphoreInfo);
+        frame.renderFence = m_device->createFenceUnique(fenceInfo);
     }
+
+
+    vk::FenceCreateInfo uploadFenceInfo;
+    m_uploadFence = m_device->createFenceUnique(uploadFenceInfo);
 }
 
 uint32_t Engine::FindMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties)
@@ -815,79 +690,28 @@ uint32_t Engine::FindMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags pro
     throw std::runtime_error("failed to find suitable memory type!");
 }
 
-void Engine::CreateVertexBuffer()
+AllocatedBuffer Engine::CreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
+                                     VmaMemoryUsage memoryUsage)
 {
-    vk::DeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
-    vk::UniqueBuffer stagingBuffer;
-    vk::UniqueDeviceMemory stagingBufferMemory;
-    CreateBuffer(bufferSize,
-                 vk::BufferUsageFlagBits::eTransferSrc,
-                 vk::MemoryPropertyFlagBits::eHostVisible |
-                 vk::MemoryPropertyFlagBits::eHostCoherent,
-                 stagingBuffer, stagingBufferMemory);
-
-    void* data = m_device->mapMemory(*stagingBufferMemory, 0, bufferSize);
-
-    memcpy(data, vertices.data(), bufferSize);
-
-    m_device->unmapMemory(*stagingBufferMemory);
-
-    CreateBuffer(bufferSize,
-                 vk::BufferUsageFlagBits::eTransferDst |
-                 vk::BufferUsageFlagBits::eVertexBuffer,
-                 vk::MemoryPropertyFlagBits::eDeviceLocal,
-                 m_vertexBuffer, m_vertexBufferMemory);
-
-    CopyBuffer(*stagingBuffer, *m_vertexBuffer, bufferSize);
-}
-
-void Engine::CreateIndexBuffer()
-{
-    vk::DeviceSize bufferSize = sizeof(g_indices[0]) * g_indices.size();
-    vk::UniqueBuffer stagingBuffer;
-    vk::UniqueDeviceMemory stagingBufferMemory;
-    CreateBuffer(bufferSize,
-                 vk::BufferUsageFlagBits::eTransferSrc,
-                 vk::MemoryPropertyFlagBits::eHostVisible |
-                 vk::MemoryPropertyFlagBits::eHostCoherent,
-                 stagingBuffer, stagingBufferMemory);
-
-    void* data = m_device->mapMemory(*stagingBufferMemory, 0, bufferSize);
-
-    memcpy(data, g_indices.data(), bufferSize);
-
-    m_device->unmapMemory(*stagingBufferMemory);
-
-    CreateBuffer(bufferSize,
-                 vk::BufferUsageFlagBits::eTransferDst |
-                 vk::BufferUsageFlagBits::eIndexBuffer,
-                 vk::MemoryPropertyFlagBits::eDeviceLocal,
-                 m_indexBuffer, m_indexBufferMemory);
-
-    CopyBuffer(*stagingBuffer, *m_indexBuffer, bufferSize);
-}
-
-void Engine::CreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
-                  vk::MemoryPropertyFlags properties,
-                  vk::UniqueBuffer& buffer, vk::UniqueDeviceMemory& bufferMemory)
-{
-    vk::BufferCreateInfo bufferInfo;
+    VkBufferCreateInfo bufferInfo = {};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = size;
-    bufferInfo.usage = usage;
-    bufferInfo.sharingMode = vk::SharingMode::eExclusive;
+    bufferInfo.usage = static_cast<VkBufferUsageFlags>(usage);
 
-    buffer = m_device->createBufferUnique(bufferInfo);
+    VmaAllocationCreateInfo vmaallocInfo = {};
+    vmaallocInfo.usage = memoryUsage;
 
-    auto memRequirementes = m_device->getBufferMemoryRequirements(*buffer);
+    AllocatedBuffer newBuffer;
 
-    vk::MemoryAllocateInfo allocInfo;
-    allocInfo.allocationSize = memRequirementes.size;
-    allocInfo.memoryTypeIndex = FindMemoryType(memRequirementes.memoryTypeBits,
-                                               properties);
+    vmaCreateBuffer(m_vmaAllocator, &bufferInfo, &vmaallocInfo,
+                    &newBuffer.buffer,
+                    &newBuffer.allocation,
+                    nullptr);
 
-    bufferMemory = m_device->allocateMemoryUnique(allocInfo, nullptr);
+    newBuffer.allocator = m_vmaAllocator;
+    newBuffer.device = *m_device;
 
-    m_device->bindBufferMemory(*buffer, *bufferMemory, 0);
+    return newBuffer;
 }
 
 void Engine::CopyBuffer(vk::Buffer srcBuffer, vk::Buffer dstBuffer, vk::DeviceSize size)
@@ -912,21 +736,14 @@ void Engine::CreateDescriptorSetLayout()
     vk::DescriptorSetLayoutCreateInfo layoutInfo;
     layoutInfo.setBindings(uboLayoutBinding);
 
-    m_descriptorSetLayout = m_device->createDescriptorSetLayoutUnique(layoutInfo);
+    m_globalSetLayout = m_device->createDescriptorSetLayoutUnique(layoutInfo);
 }
 
 void Engine::CreateUniformBuffers()
 {
-    vk::DeviceSize bufferSize = sizeof(m_ubo);
-    m_uniformBuffers.resize(m_swapChainImages.size());
-    m_uniformBuffersMemory.resize(m_swapChainImages.size());
-
-    for (size_t i = 0; i < m_swapChainImages.size(); i++)
+    for (auto& frame : m_frames)
     {
-        CreateBuffer(bufferSize, vk::BufferUsageFlagBits::eUniformBuffer,
-                     vk::MemoryPropertyFlagBits::eHostVisible |
-                     vk::MemoryPropertyFlagBits::eHostCoherent,
-                     m_uniformBuffers[i], m_uniformBuffersMemory[i]);
+        frame.sceneBuffer = CreateBuffer(sizeof(SceneData), vk::BufferUsageFlagBits::eUniformBuffer, VMA_MEMORY_USAGE_CPU_TO_GPU);
     }
 }
 
@@ -944,27 +761,24 @@ void Engine::CreateDescriptorPool()
 
 void Engine::CreateDescriptorSets()
 {
-    std::vector<vk::DescriptorSetLayout> layouts(m_swapChainImages.size(),
-                                                 *m_descriptorSetLayout);
-
-    vk::DescriptorSetAllocateInfo allocInfo;
-
-    allocInfo.descriptorPool = *m_descriptorPool;
-    allocInfo.descriptorSetCount = m_swapChainImages.size();
-    allocInfo.pSetLayouts = layouts.data();
-
-    m_descriptorSets.resize(m_swapChainImages.size());
-    m_descriptorSets = m_device->allocateDescriptorSets(allocInfo);
-
-    for (size_t i = 0; i < m_swapChainImages.size(); i++)
+    for (auto& frame : m_frames)
     {
+        vk::DescriptorSetAllocateInfo allocInfo;
+
+        allocInfo.descriptorPool = *m_descriptorPool;
+        allocInfo.descriptorSetCount = 1;
+        allocInfo.setSetLayouts(*m_globalSetLayout);
+
+        auto sets = m_device->allocateDescriptorSets(allocInfo);
+        frame.globalDescriptor = sets.front();
+
         vk::DescriptorBufferInfo bufferInfo;
-        bufferInfo.buffer = *m_uniformBuffers[i];
+        bufferInfo.buffer = frame.sceneBuffer.buffer;
         bufferInfo.offset = 0;
-        bufferInfo.range = sizeof(m_ubo);
+        bufferInfo.range = sizeof(SceneData);
 
         vk::WriteDescriptorSet descriptorWrite;
-        descriptorWrite.dstSet = m_descriptorSets[i];
+        descriptorWrite.dstSet = frame.globalDescriptor;
         descriptorWrite.dstBinding = 0;
         descriptorWrite.dstArrayElement = 0;
         descriptorWrite.descriptorType = vk::DescriptorType::eUniformBuffer;
@@ -973,22 +787,6 @@ void Engine::CreateDescriptorSets()
 
         m_device->updateDescriptorSets(descriptorWrite, nullptr);
     }
-}
-
-
-void Engine::CreateWholeScreenPipelines()
-{
-    auto whole = CreateShaderModule(
-        ShaderCompiler::CompileFromFile(
-            Files::Local("shaders/whole.vert"),
-            shaderc_shader_kind::shaderc_glsl_vertex_shader));
-
-    auto torus = CreateShaderModule(
-        ShaderCompiler::CompileFromFile(
-            Files::Local("shaders/torus.frag"),
-            shaderc_shader_kind::shaderc_glsl_fragment_shader));
-
-    m_torusPipeline = CreateWholeScreenPipeline(*whole, *torus, *m_pipelineLayout);
 }
 
 void Engine::Init(GLFWwindow* window)
@@ -1008,13 +806,9 @@ void Engine::Init(GLFWwindow* window)
     CreateDescriptorSetLayout();
     CreateDescriptorPool();
     CreateDescriptorSets();
-    CreateGraphicsPipeline();
-    CreateWholeScreenPipelines();
     CreateCommandPool();
     CreateDepthResources();
     CreateFramebuffers();
-    CreateVertexBuffer();
-    CreateIndexBuffer();
     CreateCommandBuffers();
     CreateSyncObjects();
 
@@ -1111,87 +905,17 @@ void Engine::CreateDepthResources()
                                        vk::ImageAspectFlagBits::eDepth);
 }
 
-void Engine::UpdateUniformBuffer(uint32_t currentImage)
+void Engine::WriteGlobalUniformBuffer()
 {
-    void* data = m_device->mapMemory(*m_uniformBuffersMemory[currentImage], 0, sizeof(m_ubo));
+    m_ubo.projInv = glm::inverse(m_ubo.proj);
+    m_ubo.viewInv = glm::inverse(m_ubo.view);
+    m_ubo.projview = m_ubo.proj * m_ubo.view;
+    m_ubo.resolution = {m_swapChainExtent.width, m_swapChainExtent.height};
+
+    void* data;
+    vmaMapMemory(m_vmaAllocator, CurrentFrame().sceneBuffer.allocation, &data);
     memcpy(data, &m_ubo, sizeof(m_ubo));
-    m_device->unmapMemory(*m_uniformBuffersMemory[currentImage]);
-}
-
-void Engine::DrawFrame(float lag)
-{
-    auto r = m_device->waitForFences(*m_inFlightFences[m_currentFrame],
-                                    VK_TRUE, UINT64_MAX);
-    auto acquireResult = m_device->acquireNextImageKHR(
-        *m_swapChain, UINT64_MAX, *m_imageAvailableSemaphores[m_currentFrame]);
-
-    if (acquireResult.result == vk::Result::eErrorOutOfDateKHR)
-    {
-        RecreateSwapChain();
-        return;
-    }
-    else if (acquireResult.result != vk::Result::eSuccess &&
-             acquireResult.result != vk::Result::eSuboptimalKHR)
-    {
-        throw std::runtime_error("failed to acquire swap chain image!");
-    }
-
-    uint32_t imageIndex = acquireResult.value;
-
-    if (m_imagesInFlight[imageIndex].has_value())
-    {
-        auto re = m_device->waitForFences(m_imagesInFlight[imageIndex].value(),
-                                         VK_TRUE, UINT64_MAX);
-    }
-
-    m_imagesInFlight[imageIndex] = *m_inFlightFences[m_currentFrame];
-
-    UpdateUniformBuffer(imageIndex);
-    BeginRecreateCommandBuffer(imageIndex);
-    EndRecreateCommandBuffer(imageIndex);
-
-    vk::SubmitInfo submitInfo;
-
-    std::array waitSemaphores {*m_imageAvailableSemaphores[m_currentFrame]};
-    vk::PipelineStageFlags waitStages[] {
-        vk::PipelineStageFlagBits::eColorAttachmentOutput
-    };
-
-    submitInfo.setWaitSemaphores(waitSemaphores);
-    submitInfo.pWaitDstStageMask = waitStages;
-    submitInfo.setCommandBuffers(*m_commandBuffers[imageIndex]);
-
-    std::array signalSemaphores {*m_renderFinishedSemaphores[m_currentFrame]};
-    submitInfo.setSignalSemaphores(signalSemaphores);
-
-    m_device->resetFences(*m_inFlightFences[m_currentFrame]);
-
-    m_graphicsQueue.submit(submitInfo, *m_inFlightFences[m_currentFrame]);
-
-    std::array swapchains {*m_swapChain};
-
-    vk::PresentInfoKHR presentInfo;
-    presentInfo.setWaitSemaphores(signalSemaphores);
-    presentInfo.setSwapchains(swapchains);
-    presentInfo.setImageIndices(imageIndex);
-
-    VkQueue q = m_graphicsQueue;
-    VkPresentInfoKHR p = presentInfo;
-    auto presentResult = vkQueuePresentKHR(q, &p);
-    if (presentResult == VK_SUBOPTIMAL_KHR ||
-        presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
-        m_framebufferResized)
-    {
-        m_framebufferResized = false;
-        RecreateSwapChain();
-        return;
-    }
-    else if (presentResult != VK_SUCCESS)
-    {
-        throw std::runtime_error("failed to present swap chain image!");
-    }
-
-    m_currentFrame = (m_currentFrame + 1) % m_max_frames_in_flight;
+    vmaUnmapMemory(m_vmaAllocator, CurrentFrame().sceneBuffer.allocation);
 }
 
 void Engine::Terminate()
@@ -1205,19 +929,20 @@ void Engine::Terminate()
 
 void Engine::CreateTracyContexts()
 {
-    for (auto& cmd : m_commandBuffers)
+    for (auto& frame : m_frames)
     {
-        auto ctx = TracyVkContext(m_physicalDevice, *m_device, m_graphicsQueue, *cmd);
+        auto ctx = TracyVkContext(m_physicalDevice, *m_device,
+                                  m_graphicsQueue, *frame.commandBuffer);
         m_tracyCtxs.push_back(ctx);
     }
 }
 
 vk::CommandBuffer Engine::BeginFrame()
 {
-    auto r = m_device->waitForFences(*m_inFlightFences[m_currentFrame],
+    auto r = m_device->waitForFences(*CurrentFrame().renderFence,
                                      VK_TRUE, UINT64_MAX);
     auto acquireResult = m_device->acquireNextImageKHR(
-        *m_swapChain, UINT64_MAX, *m_imageAvailableSemaphores[m_currentFrame]);
+        *m_swapChain, UINT64_MAX, *CurrentFrame().presentSemaphore);
 
     if (acquireResult.result == vk::Result::eErrorOutOfDateKHR)
     {
@@ -1230,6 +955,8 @@ vk::CommandBuffer Engine::BeginFrame()
         throw std::runtime_error("failed to acquire swap chain image!");
     }
 
+    WriteGlobalUniformBuffer();
+
     uint32_t imageIndex = acquireResult.value;
     m_currentImageIndex = imageIndex;
 
@@ -1239,35 +966,39 @@ vk::CommandBuffer Engine::BeginFrame()
                                           VK_TRUE, UINT64_MAX);
     }
 
-    m_imagesInFlight[imageIndex] = *m_inFlightFences[m_currentFrame];
+    m_imagesInFlight[imageIndex] = *CurrentFrame().renderFence;
 
-    UpdateUniformBuffer(imageIndex);
-    BeginRecreateCommandBuffer(imageIndex);
-    return *m_commandBuffers[imageIndex];
+    RecreateCommandBuffer();
+    vk::CommandBufferBeginInfo beginInfo;
+    beginInfo.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit;
+    CurrentFrame().commandBuffer->begin(beginInfo);
+
+    return *CurrentFrame().commandBuffer;
 }
 
 void Engine::EndFrame()
 {
     uint32_t imageIndex = m_currentImageIndex;
-    EndRecreateCommandBuffer(imageIndex);
+    TracyVkCollect(m_tracyCtxs[m_currentFrame], *CurrentFrame().commandBuffer);
+    CurrentFrame().commandBuffer->end();
 
     vk::SubmitInfo submitInfo;
 
-    std::array waitSemaphores {*m_imageAvailableSemaphores[m_currentFrame]};
+    std::array waitSemaphores {*CurrentFrame().presentSemaphore};
     vk::PipelineStageFlags waitStages[] {
         vk::PipelineStageFlagBits::eColorAttachmentOutput
     };
 
     submitInfo.setWaitSemaphores(waitSemaphores);
     submitInfo.pWaitDstStageMask = waitStages;
-    submitInfo.setCommandBuffers(*m_commandBuffers[imageIndex]);
+    submitInfo.setCommandBuffers(*CurrentFrame().commandBuffer);
 
-    std::array signalSemaphores {*m_renderFinishedSemaphores[m_currentFrame]};
+    std::array signalSemaphores {*CurrentFrame().renderSemaphore};
     submitInfo.setSignalSemaphores(signalSemaphores);
 
-    m_device->resetFences(*m_inFlightFences[m_currentFrame]);
+    m_device->resetFences(*CurrentFrame().renderFence);
 
-    m_graphicsQueue.submit(submitInfo, *m_inFlightFences[m_currentFrame]);
+    m_graphicsQueue.submit(submitInfo, *CurrentFrame().renderFence);
 
     std::array swapchains {*m_swapChain};
 
@@ -1313,37 +1044,13 @@ void Engine::BeginRenderPass(vk::CommandBuffer cmd)
 
     renderPassInfo.setClearValues(clearValues);
 
-    m_commandBuffers[i]->beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
-
-    m_commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_graphicsPipeline);
-
-    std::array<vk::Buffer, 1> vertexBuffers {*m_vertexBuffer};
-    std::array<vk::DeviceSize, 1> offsets = {0};
-
-    m_commandBuffers[i]->bindVertexBuffers(0, vertexBuffers, offsets);
-    m_commandBuffers[i]->bindIndexBuffer(*m_indexBuffer, 0, vk::IndexType::eUint16);
-
-    m_commandBuffers[i]->bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                                            *m_pipelineLayout, 0, m_descriptorSets[i],
-                                            nullptr);
-
-    {
-    TracyVkZone(m_tracyCtxs[i], *m_commandBuffers[i], "Normal");
-    m_commandBuffers[i]->drawIndexed(static_cast<uint32_t>(g_indices.size()), 1, 0, 0, 0);
-    }
-
-    m_commandBuffers[i]->bindPipeline(vk::PipelineBindPoint::eGraphics, *m_torusPipeline);
-    {
-    TracyVkZone(m_tracyCtxs[i], *m_commandBuffers[i], "Torus");
-    m_commandBuffers[i]->draw(3, 1, 0, 0);
-    }
+    cmd.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
 }
 
 void Engine::EndRenderPass(vk::CommandBuffer cmd)
 {
-    auto i = m_currentImageIndex;
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *m_commandBuffers[i]);
-    m_commandBuffers[i]->endRenderPass();
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+    cmd.endRenderPass();
 }
 
 vk::UniquePipelineLayout Engine::CreatePushConstantsLayout(
@@ -1351,7 +1058,8 @@ vk::UniquePipelineLayout Engine::CreatePushConstantsLayout(
     &pushConstantRanges) const
 {
     vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
-    pipelineLayoutInfo.setSetLayouts(*m_descriptorSetLayout);
+    auto layout = GetGlobalSetLayout();
+    pipelineLayoutInfo.setSetLayouts(layout);
     pipelineLayoutInfo.setPushConstantRanges(pushConstantRanges);
 
     return m_device->createPipelineLayoutUnique(pipelineLayoutInfo);

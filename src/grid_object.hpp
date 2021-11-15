@@ -27,7 +27,7 @@ public:
     void Draw(vk::CommandBuffer cmd, Engine& engine) override
     {
         cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                               *m_pipelineLayout, 0, engine.GetCurrentDescriptorSet(),
+                               *m_pipelineLayout, 0, engine.GetCurrentGlobalSet(),
                                nullptr);
 
         cmd.pushConstants(*m_pipelineLayout, m_pushConstantsStageFlags, 0, sizeof(push_constants), &push_constants);
@@ -51,12 +51,12 @@ private:
     {
         auto whole = engine.CreateShaderModule(
             ShaderCompiler::CompileFromFile(
-                Files::Local("shaders/whole.vert"),
+                Files::Local("res/shaders/whole.vert"),
                 shaderc_shader_kind::shaderc_glsl_vertex_shader));
 
         auto grid = engine.CreateShaderModule(
             ShaderCompiler::CompileFromFile(
-                Files::Local("shaders/grid.frag"),
+                Files::Local("res/shaders/grid.frag"),
                 shaderc_shader_kind::shaderc_glsl_fragment_shader));
 
 

@@ -24,10 +24,10 @@ find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(Vulkan REQUIRED)
-find_package(Boost COMPONENTS REQUIRED system)
 find_package(shaderc REQUIRED)
 find_package(imgui REQUIRED)
 find_package(vulkan-memory-allocator REQUIRED)
+find_package(tinyobjloader REQUIRED)
 
 target_link_libraries(app
   Vulkan::Vulkan
@@ -38,6 +38,7 @@ target_link_libraries(app
   imgui::imgui
   Tracy::TracyClient
   vulkan-memory-allocator::vulkan-memory-allocator
+  tinyobjloader::tinyobjloader
   )
 
 target_include_directories(app PUBLIC src/)
@@ -51,7 +52,7 @@ target_compile_definitions(app PUBLIC
 
 add_custom_command(TARGET app POST_BUILD
                    COMMAND ${CMAKE_COMMAND} -E create_symlink
-                   ${CMAKE_SOURCE_DIR}/shaders/ $<TARGET_FILE_DIR:app>/shaders
-                   COMMENT "Symlink shaders directory"
+                   ${CMAKE_SOURCE_DIR}/res/ $<TARGET_FILE_DIR:app>/res
+                   COMMENT "Symlink res directory"
                    DEPENDS  ${dest}
                    )

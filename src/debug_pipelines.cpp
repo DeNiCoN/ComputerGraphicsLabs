@@ -139,23 +139,23 @@ void DebugPipelines::CreateGraphicsPipelines(Engine& engine)
 {
     auto lineVert = engine.CreateShaderModule(
         ShaderCompiler::CompileFromFile(
-            Files::Local("shaders/line.vert"),
+            Files::Local("res/shaders/line.vert"),
             shaderc_shader_kind::shaderc_glsl_vertex_shader));
 
     auto arrowVert = engine.CreateShaderModule(
         ShaderCompiler::CompileFromFile(
-            Files::Local("shaders/arrow.vert"),
+            Files::Local("res/shaders/arrow.vert"),
             shaderc_shader_kind::shaderc_glsl_vertex_shader));
 
     auto boxVert = engine.CreateShaderModule(
         ShaderCompiler::CompileFromFile(
-            Files::Local("shaders/box.vert"),
+            Files::Local("res/shaders/box.vert"),
             shaderc_shader_kind::shaderc_glsl_vertex_shader));
 
     auto fragModule =
         engine.CreateShaderModule(
             ShaderCompiler::CompileFromFile(
-                Files::Local("shaders/color.frag"),
+                Files::Local("res/shaders/color.frag"),
                 shaderc_shader_kind::shaderc_glsl_fragment_shader));
 
     vk::PipelineShaderStageCreateInfo vertCreateInfo;
@@ -227,6 +227,11 @@ void DebugPipelines::CreateGraphicsPipelines(Engine& engine)
     depthStencil.depthBoundsTestEnable = VK_FALSE;
     depthStencil.stencilTestEnable = VK_FALSE;
 
+    vk::PipelineLayoutCreateInfo layoutInfo;
+    auto globalLayout = engine.GetGlobalSetLayout();
+    layoutInfo.setSetLayouts(globalLayout);
+    m_pipelineLayout = engine.GetDevice().createPipelineLayoutUnique(layoutInfo);
+
     vk::GraphicsPipelineCreateInfo pipelineInfo;
     pipelineInfo.setStages(shaderStages);
 
@@ -237,7 +242,7 @@ void DebugPipelines::CreateGraphicsPipelines(Engine& engine)
     pipelineInfo.pMultisampleState = &multisamplingInfo;
     pipelineInfo.pColorBlendState = &colorBlendingInfo;
     pipelineInfo.pDepthStencilState = &depthStencil;
-    pipelineInfo.layout = engine.GetPipelineLayout();
+    pipelineInfo.layout = *m_pipelineLayout;
     pipelineInfo.renderPass = engine.GetRenderPass();
     pipelineInfo.subpass = 0;
 
@@ -290,7 +295,7 @@ void DebugPipelines::WriteCmdBuffer(vk::CommandBuffer cmd, Engine& engine)
 
     cmd.clearAttachments(clearAttachment, clearRect);
     cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                           engine.GetPipelineLayout(), 0, engine.GetCurrentDescriptorSet(),
+                           *m_pipelineLayout, 0, engine.GetCurrentGlobalSet(),
                            nullptr);
 
     if (m_lines.size() > 0)

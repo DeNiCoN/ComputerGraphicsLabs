@@ -15,12 +15,12 @@ conan_cmake_configure(
   glfw/[>=3.3.4]
   glm/[>=0.9.9]
   spdlog/[>=1.8.5]
-  boost/[>=1.76.0]
   wayland/1.18.0
   vulkan-loader/[>=1.2.172]
   shaderc/[>=2021.1]
   imgui/[>=1.84.2]
   vulkan-memory-allocator/2.3.0
+  tinyobjloader/1.0.6
 
   OPTIONS
   spdlog:header_only=True
