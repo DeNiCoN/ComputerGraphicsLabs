@@ -78,4 +78,5 @@ private:
     MaterialManager m_material_manager {m_engine};
     MeshManager m_mesh_manager {m_engine};
     MeshRenderer m_mesh_renderer;
+    TextureManager m_texture_manager { m_engine };
 };

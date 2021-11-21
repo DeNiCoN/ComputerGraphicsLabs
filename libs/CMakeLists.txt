@@ -21,6 +21,7 @@ conan_cmake_configure(
   imgui/[>=1.84.2]
   vulkan-memory-allocator/2.3.0
   tinyobjloader/1.0.6
+  stb/cci.20210713
 
   OPTIONS
   spdlog:header_only=True

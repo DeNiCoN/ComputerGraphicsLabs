@@ -2,6 +2,7 @@
 #include <tiny_obj_loader.h>
 #include <spdlog/spdlog.h>
 #include "shader_compiler.hpp"
+#include <stb_image.h>
 
 std::array<vk::VertexInputAttributeDescription, 4>
 Vertex::AttributeDescriptions()
@@ -15,17 +16,17 @@ Vertex::AttributeDescriptions()
     attributeDescriptions[1].binding = 0;
     attributeDescriptions[1].location = 1;
     attributeDescriptions[1].format = vk::Format::eR32G32B32Sfloat;
-    attributeDescriptions[1].offset = offsetof(Vertex, position);
+    attributeDescriptions[1].offset = offsetof(Vertex, normal);
 
     attributeDescriptions[2].binding = 0;
     attributeDescriptions[2].location = 2;
     attributeDescriptions[2].format = vk::Format::eR32G32B32Sfloat;
-    attributeDescriptions[2].offset = offsetof(Vertex, position);
+    attributeDescriptions[2].offset = offsetof(Vertex, color);
 
     attributeDescriptions[3].binding = 0;
     attributeDescriptions[3].location = 3;
     attributeDescriptions[3].format = vk::Format::eR32G32Sfloat;
-    attributeDescriptions[3].offset = offsetof(Vertex, position);
+    attributeDescriptions[3].offset = offsetof(Vertex, textureCoord);
 
     return attributeDescriptions;
 
@@ -38,6 +39,175 @@ vk::VertexInputBindingDescription Vertex::BindingDescription()
     bindingDescription.stride = sizeof(Vertex);
     bindingDescription.inputRate = vk::VertexInputRate::eVertex;
     return bindingDescription;
+}
+
+Texture::Ptr TextureManager::NewFromFile(const std::string &name,
+                                         const std::filesystem::path &filename)
+{
+    int texWidth, texHeight, texChannels;
+
+    stbi_uc* pixels = stbi_load(filename.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+
+    if (!pixels) {
+        spdlog::error("Failed to load texture file {}", filename.c_str());
+        throw std::runtime_error("");
+    }
+
+    void* pixel_ptr = pixels;
+    VkDeviceSize imageSize = texWidth * texHeight * 4;
+
+    //the format R8G8B8A8 matches exactly with the pixels loaded from stb_image lib
+    VkFormat image_format = VK_FORMAT_R8G8B8A8_SRGB;
+
+    //allocate temporary buffer for holding texture data to upload
+    AllocatedBuffer stagingBuffer =
+        m_engine.CreateBuffer(imageSize,
+                              vk::BufferUsageFlagBits::eTransferSrc,
+                              VMA_MEMORY_USAGE_CPU_ONLY);
+
+    //copy data to buffer
+    void* data;
+    vmaMapMemory(m_engine.GetVmaAllocator(), stagingBuffer.allocation, &data);
+    memcpy(data, pixel_ptr, static_cast<size_t>(imageSize));
+    vmaUnmapMemory(m_engine.GetVmaAllocator(), stagingBuffer.allocation);
+    //we no longer need the loaded data, so we can free the pixels as they are now in the staging buffer
+    stbi_image_free(pixels);
+
+    VkExtent3D imageExtent;
+    imageExtent.width = static_cast<uint32_t>(texWidth);
+    imageExtent.height = static_cast<uint32_t>(texHeight);
+    imageExtent.depth = 1;
+
+    VkImageCreateInfo dimg_info {};
+    dimg_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    dimg_info.imageType = VK_IMAGE_TYPE_2D;
+    dimg_info.mipLevels = 1;
+    dimg_info.arrayLayers = 1;
+    dimg_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    dimg_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+
+    dimg_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    dimg_info.extent = imageExtent;
+    dimg_info.format = image_format;
+
+    AllocatedImage newImage;
+
+    VmaAllocationCreateInfo dimg_allocinfo = {};
+    dimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+    //allocate and create the image
+    vmaCreateImage(m_engine.GetVmaAllocator(), &dimg_info, &dimg_allocinfo,
+                   &newImage.image, &newImage.allocation, nullptr);
+    newImage.allocator = m_engine.GetVmaAllocator();
+    newImage.device = m_engine.GetDevice();
+
+    m_engine.ImmediateSubmit([&](VkCommandBuffer cmd) {
+        VkImageSubresourceRange range;
+        range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        range.baseMipLevel = 0;
+        range.levelCount = 1;
+        range.baseArrayLayer = 0;
+        range.layerCount = 1;
+
+        VkImageMemoryBarrier imageBarrier_toTransfer = {};
+        imageBarrier_toTransfer.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+
+        imageBarrier_toTransfer.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        imageBarrier_toTransfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        imageBarrier_toTransfer.image = newImage.image;
+        imageBarrier_toTransfer.subresourceRange = range;
+
+        imageBarrier_toTransfer.srcAccessMask = 0;
+        imageBarrier_toTransfer.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+        //barrier the image into the transfer-receive layout
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageBarrier_toTransfer);
+
+        VkBufferImageCopy copyRegion = {};
+        copyRegion.bufferOffset = 0;
+        copyRegion.bufferRowLength = 0;
+        copyRegion.bufferImageHeight = 0;
+
+        copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        copyRegion.imageSubresource.mipLevel = 0;
+        copyRegion.imageSubresource.baseArrayLayer = 0;
+        copyRegion.imageSubresource.layerCount = 1;
+        copyRegion.imageExtent = imageExtent;
+
+        //copy the buffer into the image
+        vkCmdCopyBufferToImage(cmd, stagingBuffer.buffer, newImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+
+        VkImageMemoryBarrier imageBarrier_toReadable = imageBarrier_toTransfer;
+
+        imageBarrier_toReadable.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        imageBarrier_toReadable.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+        imageBarrier_toReadable.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        imageBarrier_toReadable.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+        //barrier the image into the shader readable layout
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageBarrier_toReadable);
+    });
+
+    Texture::Ptr result = std::make_shared<Texture>();
+    result->image = std::move(newImage);
+
+    vk::ImageViewCreateInfo imageViewInfo;
+    imageViewInfo.viewType = vk::ImageViewType::e2D;
+    imageViewInfo.image = result->image.image;
+    imageViewInfo.format = vk::Format::eR8G8B8A8Srgb;
+    imageViewInfo.subresourceRange.baseMipLevel = 0;
+    imageViewInfo.subresourceRange.levelCount = 1;
+    imageViewInfo.subresourceRange.baseArrayLayer = 0;
+    imageViewInfo.subresourceRange.layerCount = 1;
+    imageViewInfo.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+
+    result->imageView = m_engine.GetDevice().createImageViewUnique(imageViewInfo);
+
+    //create a sampler for the texture
+    vk::SamplerCreateInfo samplerInfo;
+    samplerInfo.magFilter = vk::Filter::eNearest;
+    samplerInfo.minFilter = vk::Filter::eNearest;
+    samplerInfo.addressModeU = vk::SamplerAddressMode::eRepeat;
+    samplerInfo.addressModeV = vk::SamplerAddressMode::eRepeat;
+    samplerInfo.addressModeW = vk::SamplerAddressMode::eRepeat;
+
+    result->sampler =
+        m_engine.GetDevice().createSamplerUnique(samplerInfo);
+
+    m_textures[name] = result;
+    return result;
+}
+
+TextureSet::Ptr TextureManager::NewTextureSet(Texture::Ptr diffuse)
+{
+    auto result = std::make_shared<TextureSet>();
+    result->diffuse = diffuse;
+
+    //allocate the descriptor set for single-texture to use on the material
+    vk::DescriptorSetAllocateInfo allocInfo;
+    allocInfo.descriptorPool = m_engine.GetGlobalDescriptorPool();
+    allocInfo.descriptorSetCount = 1;
+    auto layout = m_engine.GetTextureSetLayout();
+    allocInfo.setSetLayouts(layout);
+
+    result->descriptor = m_engine.GetDevice().allocateDescriptorSets(allocInfo)[0];
+
+    //write to the descriptor set so that it points to our empire_diffuse texture
+    vk::DescriptorImageInfo imageBufferInfo;
+    imageBufferInfo.sampler = *diffuse->sampler;
+    imageBufferInfo.imageView = *diffuse->imageView;
+    imageBufferInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+
+    vk::WriteDescriptorSet diffuseWrite;
+    diffuseWrite.dstBinding = 0;
+    diffuseWrite.dstSet = result->descriptor;
+    diffuseWrite.descriptorCount = 1;
+    diffuseWrite.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    diffuseWrite.pImageInfo = &imageBufferInfo;
+
+    m_engine.GetDevice().updateDescriptorSets(diffuseWrite, nullptr);
+    return result;
 }
 
 Mesh::Ptr MeshManager::NewFromObj(const std::string &name, const std::filesystem::path &filename)
@@ -68,6 +238,15 @@ Mesh::Ptr MeshManager::NewFromObj(const std::string &name, const std::filesystem
                 attrib.vertices[3 * index.vertex_index + 1],
                 attrib.vertices[3 * index.vertex_index + 2]
             };
+
+            if (attrib.normals.size() > 0)
+            {
+                vertex.normal = {
+                    attrib.normals[3 * index.normal_index + 0],
+                    attrib.normals[3 * index.normal_index + 1],
+                    attrib.normals[3 * index.normal_index + 2]
+                };
+            }
 
             if (attrib.texcoords.size() > 0)
             {
@@ -199,11 +378,14 @@ Material::Ptr MaterialManager::Create(
 
     vk::PipelineLayoutCreateInfo layoutInfo;
     auto globalLayout = m_engine.GetGlobalSetLayout();
+    auto textureLayout = m_engine.GetTextureSetLayout();
+
+    auto layouts = {globalLayout, textureLayout};
     vk::PushConstantRange range(
         vk::ShaderStageFlagBits::eAllGraphics,
         0, sizeof(PushConstants)
         );
-    layoutInfo.setSetLayouts(globalLayout);
+    layoutInfo.setSetLayouts(layouts);
     layoutInfo.setPushConstantRanges(range);
 
     result->pipelineLayout = m_engine.GetDevice().createPipelineLayoutUnique(layoutInfo);
@@ -234,6 +416,7 @@ Material::Ptr MaterialManager::FromShaders(
 {
     Material::Ptr result = Create(name, vertex, fragment);
     m_materials[name] = result;
+    m_names[result] = name;
     m_used_shaders[name] = {vertex, fragment};
 
     return result;
@@ -262,16 +445,39 @@ void MeshRenderer::WriteCmdBuffer(vk::CommandBuffer cmd, Engine& engine)
 {
     Material::Ptr lastMaterial;
     Mesh::Ptr lastMesh;
+    TextureSet::Ptr lastTextureSet;
 
     TracyVkZone(engine.GetCurrentTracyContext(), cmd, "Meshes");
     for (auto& drawData : m_toDraw)
     {
+        if (drawData.textures != lastTextureSet)
+        {
+            lastTextureSet = drawData.textures;
+            if (drawData.material == lastMaterial)
+            {
+                if (lastTextureSet != nullptr)
+                {
+                    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                                           *drawData.material->pipelineLayout, 1,
+                                           lastTextureSet->descriptor, nullptr);
+                }
+            }
+        }
+
         if (drawData.material != lastMaterial)
         {
             cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *drawData.material->pipeline);
             cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
                                    *drawData.material->pipelineLayout, 0,
                                    engine.GetCurrentGlobalSet(), nullptr);
+
+            if (lastTextureSet != nullptr)
+            {
+                cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                                       *drawData.material->pipelineLayout, 1,
+                                       lastTextureSet->descriptor, nullptr);
+            }
+
             lastMaterial = drawData.material;
         }
         PushConstants constants;

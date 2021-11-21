@@ -725,18 +725,32 @@ void Engine::CopyBuffer(vk::Buffer srcBuffer, vk::Buffer dstBuffer, vk::DeviceSi
     });
 }
 
-void Engine::CreateDescriptorSetLayout()
+void Engine::CreateGlobalSetLayout()
 {
     vk::DescriptorSetLayoutBinding uboLayoutBinding;
     uboLayoutBinding.binding = 0;
     uboLayoutBinding.descriptorType = vk::DescriptorType::eUniformBuffer;
     uboLayoutBinding.descriptorCount = 1;
-    uboLayoutBinding.stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
+    uboLayoutBinding.stageFlags = vk::ShaderStageFlagBits::eAllGraphics;
 
     vk::DescriptorSetLayoutCreateInfo layoutInfo;
     layoutInfo.setBindings(uboLayoutBinding);
 
     m_globalSetLayout = m_device->createDescriptorSetLayoutUnique(layoutInfo);
+}
+
+void Engine::CreateTextureSetLayout()
+{
+    vk::DescriptorSetLayoutBinding textureLayoutBinding;
+    textureLayoutBinding.binding = 0;
+    textureLayoutBinding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    textureLayoutBinding.descriptorCount = 1;
+    textureLayoutBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
+
+    vk::DescriptorSetLayoutCreateInfo layoutInfo;
+    layoutInfo.setBindings(textureLayoutBinding);
+
+    m_textureSetLayout = m_device->createDescriptorSetLayoutUnique(layoutInfo);
 }
 
 void Engine::CreateUniformBuffers()
@@ -749,13 +763,17 @@ void Engine::CreateUniformBuffers()
 
 void Engine::CreateDescriptorPool()
 {
-    vk::DescriptorPoolSize poolSize;
-    poolSize.descriptorCount = m_swapChainImages.size();
+    std::vector<vk::DescriptorPoolSize> sizes {
+        {vk::DescriptorType::eUniformBuffer, 100},
+        {vk::DescriptorType::eSampledImage, 100},
+        {vk::DescriptorType::eSampler, 100},
+        {vk::DescriptorType::eCombinedImageSampler, 100}
+    };
 
     vk::DescriptorPoolCreateInfo poolInfo;
-    poolInfo.setPoolSizes(poolSize);
+    poolInfo.setPoolSizes(sizes);
 
-    poolInfo.maxSets = m_swapChainImages.size();
+    poolInfo.maxSets = 10;
     m_descriptorPool = m_device->createDescriptorPoolUnique(poolInfo);
 }
 
@@ -803,7 +821,8 @@ void Engine::Init(GLFWwindow* window)
     CreateImageViews();
     CreateRenderPass();
     CreateUniformBuffers();
-    CreateDescriptorSetLayout();
+    CreateGlobalSetLayout();
+    CreateTextureSetLayout();
     CreateDescriptorPool();
     CreateDescriptorSets();
     CreateCommandPool();

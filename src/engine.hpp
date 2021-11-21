@@ -10,49 +10,7 @@
 #include <spdlog/spdlog.h>
 #include <TracyVulkan.hpp>
 #include <vk_mem_alloc.h>
-
-struct AllocatedBuffer
-{
-    VkBuffer buffer = VK_NULL_HANDLE;
-    VkDevice device;
-    VmaAllocation allocation = {};
-    VmaAllocator allocator = {};
-
-    AllocatedBuffer() = default;
-    AllocatedBuffer(const AllocatedBuffer&) = delete;
-    AllocatedBuffer(AllocatedBuffer&& rhs)
-    {
-        swap(*this, rhs);
-    }
-
-    friend void swap(AllocatedBuffer& lhs, AllocatedBuffer& rhs)
-    {
-        using std::swap;
-
-        swap(lhs.buffer, rhs.buffer);
-        swap(lhs.device, rhs.device);
-        swap(lhs.allocation, rhs.allocation);
-        swap(lhs.allocator, rhs.allocator);
-    }
-
-    AllocatedBuffer& operator=(AllocatedBuffer&& other)
-    {
-        AllocatedBuffer tmp(std::move(other));
-        swap(tmp, *this);
-        return *this;
-    };
-
-    ~AllocatedBuffer()
-    {
-        if (buffer != VK_NULL_HANDLE)
-        {
-            vkDestroyBuffer(device, buffer, nullptr);
-            vmaFreeMemory(allocator, allocation);
-        }
-    }
-};
-
-using UniqueAllocatedBuffer = std::unique_ptr<AllocatedBuffer>;
+#include "allocated.hpp"
 
 class Engine
 {
@@ -83,9 +41,11 @@ public:
     vk::RenderPass GetRenderPass() { return *m_renderPass; }
     vk::Extent2D GetSwapChainExtent() { return m_swapChainExtent; }
     vk::DescriptorSetLayout GetGlobalSetLayout() const { return *m_globalSetLayout; }
+    vk::DescriptorSetLayout GetTextureSetLayout() const { return *m_textureSetLayout; }
     TracyVkCtx GetCurrentTracyContext() { return m_tracyCtxs[m_currentFrame]; }
     unsigned GetCurrentFrame() const { return m_currentFrame; }
     unsigned GetCurrentImage() const { return m_currentImageIndex; }
+    vk::DescriptorPool GetGlobalDescriptorPool() { return *m_descriptorPool; }
     vk::DescriptorSet GetCurrentGlobalSet() { return CurrentFrame().globalDescriptor; }
     unsigned GetMaxFramesInFlight() const { return m_max_frames_in_flight; }
     const std::vector<vk::UniqueImageView>& GetSwapChainImageViews()
@@ -231,7 +191,8 @@ private:
     void CreateCommandBuffers();
     void RecreateCommandBuffer();
     void CreateSyncObjects();
-    void CreateDescriptorSetLayout();
+    void CreateGlobalSetLayout();
+    void CreateTextureSetLayout();
     void CreateUniformBuffers();
     void CreateDescriptorPool();
     void CreateDescriptorSets();
@@ -255,8 +216,8 @@ private:
         CreateFramebuffers();
         CreateUniformBuffers();
         CreateCommandPool();
-        CreateDescriptorPool();
-        CreateDescriptorSets();
+        //CreateDescriptorPool();
+        //CreateDescriptorSets();
         CreateCommandBuffers();
 
         for (auto& callback : m_recreateCallbacks)
@@ -313,6 +274,7 @@ private:
     vk::UniquePipelineLayout m_pipelineLayout;
     vk::UniqueDescriptorPool m_descriptorPool;
     vk::UniqueDescriptorSetLayout m_globalSetLayout;
+    vk::UniqueDescriptorSetLayout m_textureSetLayout;
     vk::UniqueDescriptorPool m_imguiDescriptorPool;
 #ifdef NDEBUG
     bool m_validationLayers = false;

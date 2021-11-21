@@ -28,6 +28,7 @@ find_package(shaderc REQUIRED)
 find_package(imgui REQUIRED)
 find_package(vulkan-memory-allocator REQUIRED)
 find_package(tinyobjloader REQUIRED)
+find_package(stb REQUIRED)
 
 target_link_libraries(app
   Vulkan::Vulkan
@@ -39,6 +40,7 @@ target_link_libraries(app
   Tracy::TracyClient
   vulkan-memory-allocator::vulkan-memory-allocator
   tinyobjloader::tinyobjloader
+  stb::stb
   )
 
 target_include_directories(app PUBLIC src/)

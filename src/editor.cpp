@@ -225,24 +225,41 @@ void Editor::InitDefaultObjects()
     m_mesh_manager.NewFromObj("Soldier", Files::Local("res/models/PinkSoldier_sketch.obj"));
     m_mesh_manager.NewFromObj("Armor", Files::Local("res/models/armor 2021.obj"));
     m_mesh_manager.NewFromObj("Octahedron", Files::Local("res/models/octahedron.obj"));
-    m_material_manager.FromShaders("Default", Files::Local("res/shaders/default.vert"),
+    m_mesh_manager.NewFromObj("Frostbone", Files::Local("res/models/castle_01.obj"));
+
+    m_texture_manager.NewFromFile(
+        "Soldier_diffuse",
+        Files::Local("res/textures/PinkSoldier_BaseColor_1001.png"));
+
+    m_material_manager.FromShaders("Default",
+                                   Files::Local("res/shaders/default.vert"),
                                    Files::Local("res/shaders/default.frag"));
+    m_material_manager.FromShaders("Model_UV",
+                                   Files::Local("res/shaders/default.vert"),
+                                   Files::Local("res/shaders/model_uv.frag"));
+    m_material_manager.FromShaders("Model_Normal",
+                                   Files::Local("res/shaders/default.vert"),
+                                   Files::Local("res/shaders/model_normal.frag"));
 
     auto armor = std::make_shared<MeshObject>(
         m_mesh_renderer,
         m_mesh_manager.Get("Armor"),
-        m_material_manager.Get("Default"));
+        m_material_manager.Get("Default"),
+        m_texture_manager.NewTextureSet(m_texture_manager.Get("Soldier_diffuse")),
+        m_material_manager);
 
     armor->position = {-4, 1, 5};
     armor->scale = 0.1;
     armor->yaw = 0.4;
 
-    m_objects.Add("Mesh1", std::move(armor));
+    m_objects.Add("Armor", std::move(armor));
 
     auto soldier = std::make_shared<MeshObject>(
         m_mesh_renderer,
         m_mesh_manager.Get("Soldier"),
-        m_material_manager.Get("Default"));
+        m_material_manager.Get("Default"),
+        m_texture_manager.NewTextureSet(m_texture_manager.Get("Soldier_diffuse")),
+        m_material_manager);
     soldier->position = {4, 1, 5};
     soldier->scale = 0.03;
 
@@ -251,9 +268,22 @@ void Editor::InitDefaultObjects()
     m_objects.Add("Octahedron", std::make_shared<MeshObject>(
                       m_mesh_renderer,
                       m_mesh_manager.Get("Octahedron"),
-                      m_material_manager.Get("Default")));
+                      m_material_manager.Get("Default"),
+                      m_texture_manager.NewTextureSet(m_texture_manager.Get("Soldier_diffuse")),
+                      m_material_manager));
 
     m_objects.Add("Grid", std::make_shared<GridObject>(m_engine));
+
+    auto frostbone = std::make_shared<MeshObject>(
+        m_mesh_renderer,
+        m_mesh_manager.Get("Frostbone"),
+        m_material_manager.Get("Default"),
+        m_texture_manager.NewTextureSet(m_texture_manager.Get("Soldier_diffuse")),
+        m_material_manager);
+    frostbone->position = {5, 0, -5};
+    frostbone->scale = 0.1;
+
+    m_objects.Add("Frostbone", std::move(frostbone));
 }
 
 void Editor::ImGuiFrame()
