@@ -356,7 +356,7 @@ Material::Ptr MaterialManager::Create(
         vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
         vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
 
-    colorBlendAttachment.blendEnable = VK_FALSE;
+    colorBlendAttachment.blendEnable = VK_TRUE;
     colorBlendAttachment.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
     colorBlendAttachment.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
     colorBlendAttachment.colorBlendOp = vk::BlendOp::eAdd;

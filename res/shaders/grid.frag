@@ -13,6 +13,7 @@ layout(binding = 0) uniform UniformBufferObject
     mat4 viewInv;
     mat4 projInv;
     mat4 projview;
+    vec3 viewPos;
     vec2 resolution;
     float time;
 } scene;

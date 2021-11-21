@@ -52,6 +52,7 @@ void Editor::OnResize(int width, int height)
 
     m_camera.SetViewport(width, height);
     m_engine.Resize();
+    m_material_manager.Recreate();
 }
 
 void Editor::OnMouseMove(double xpos, double ypos)
@@ -148,6 +149,7 @@ void Editor::Update(float delta)
     m_engine.m_ubo.view = m_camera.GetView();
     m_engine.m_ubo.proj = m_camera.GetProjection();
     m_engine.m_ubo.time += delta;
+    m_engine.m_ubo.viewPos = m_camera.position;
 
     auto extent = m_engine.GetSwapChainExtent();
     m_engine.m_ubo.resolution = glm::vec2(extent.width, extent.height);
@@ -156,6 +158,12 @@ void Editor::Update(float delta)
     if (m_objects.SelectedSize())
     {
         m_objects.GetSelectedPosition();
+    }
+
+
+    for (auto& obj : m_rotate)
+    {
+        obj->yaw += 0.1 * delta;
     }
 }
 
@@ -220,16 +228,11 @@ void Editor::InitImGui()
 
 void Editor::InitDefaultObjects()
 {
-
-
-    m_mesh_manager.NewFromObj("Soldier", Files::Local("res/models/PinkSoldier_sketch.obj"));
-    m_mesh_manager.NewFromObj("Armor", Files::Local("res/models/armor 2021.obj"));
-    m_mesh_manager.NewFromObj("Octahedron", Files::Local("res/models/octahedron.obj"));
-    m_mesh_manager.NewFromObj("Frostbone", Files::Local("res/models/castle_01.obj"));
+    m_mesh_manager.NewFromObj("Planet", Files::Local("res/models/Mars.obj"));
 
     m_texture_manager.NewFromFile(
-        "Soldier_diffuse",
-        Files::Local("res/textures/PinkSoldier_BaseColor_1001.png"));
+        "mine",
+        Files::Local("res/textures/marscyl1l.jpg"));
 
     m_material_manager.FromShaders("Default",
                                    Files::Local("res/shaders/default.vert"),
@@ -243,47 +246,19 @@ void Editor::InitDefaultObjects()
 
     auto armor = std::make_shared<MeshObject>(
         m_mesh_renderer,
-        m_mesh_manager.Get("Armor"),
+        m_mesh_manager.Get("Planet"),
         m_material_manager.Get("Default"),
-        m_texture_manager.NewTextureSet(m_texture_manager.Get("Soldier_diffuse")),
+        m_texture_manager.NewTextureSet(m_texture_manager.Get("mine")),
         m_material_manager);
 
     armor->position = {-4, 1, 5};
-    armor->scale = 0.1;
+    armor->scale = 3;
     armor->yaw = 0.4;
 
-    m_objects.Add("Armor", std::move(armor));
-
-    auto soldier = std::make_shared<MeshObject>(
-        m_mesh_renderer,
-        m_mesh_manager.Get("Soldier"),
-        m_material_manager.Get("Default"),
-        m_texture_manager.NewTextureSet(m_texture_manager.Get("Soldier_diffuse")),
-        m_material_manager);
-    soldier->position = {4, 1, 5};
-    soldier->scale = 0.03;
-
-    m_objects.Add("Soldier", std::move(soldier));
-
-    m_objects.Add("Octahedron", std::make_shared<MeshObject>(
-                      m_mesh_renderer,
-                      m_mesh_manager.Get("Octahedron"),
-                      m_material_manager.Get("Default"),
-                      m_texture_manager.NewTextureSet(m_texture_manager.Get("Soldier_diffuse")),
-                      m_material_manager));
+    m_objects.Add("Planet", armor);
+    m_rotate.push_back(armor);
 
     m_objects.Add("Grid", std::make_shared<GridObject>(m_engine));
-
-    auto frostbone = std::make_shared<MeshObject>(
-        m_mesh_renderer,
-        m_mesh_manager.Get("Frostbone"),
-        m_material_manager.Get("Default"),
-        m_texture_manager.NewTextureSet(m_texture_manager.Get("Soldier_diffuse")),
-        m_material_manager);
-    frostbone->position = {5, 0, -5};
-    frostbone->scale = 0.1;
-
-    m_objects.Add("Frostbone", std::move(frostbone));
 }
 
 void Editor::ImGuiFrame()

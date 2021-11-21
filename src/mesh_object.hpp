@@ -16,12 +16,14 @@ public:
 
     void Render(float lag) override
     {
-        glm::mat4 model = glm::identity<glm::mat4>();
+        glm::mat4 rot = glm::identity<glm::mat4>();
+        glm::mat4 trans = glm::identity<glm::mat4>();
+        glm::mat4 s = glm::identity<glm::mat4>();
 
-        model = glm::yawPitchRoll(yaw, pitch, roll) * model;
-        model = glm::translate(model, position);
-        model = glm::scale(model, {scale, scale, scale});
-        m_renderer.Add(m_mesh, m_material, m_textures, model);
+        rot = glm::yawPitchRoll(yaw, pitch, roll);
+        trans = glm::translate(trans, position);
+        s = glm::scale(s, {scale, scale, scale});
+        m_renderer.Add(m_mesh, m_material, m_textures, trans * rot * s);
     }
 
     void ImGuiOptions() override

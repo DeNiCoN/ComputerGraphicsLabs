@@ -98,6 +98,7 @@ public:
         alignas(16) glm::mat4 viewInv;
         alignas(16) glm::mat4 projInv;
         alignas(16) glm::mat4 projview;
+        alignas(16) glm::vec3 viewPos;
         alignas(8) glm::vec2 resolution;
         alignas(4) float time;
     };
@@ -214,7 +215,7 @@ private:
         CreateRenderPass();
         CreateDepthResources();
         CreateFramebuffers();
-        CreateUniformBuffers();
+        //CreateUniformBuffers();
         CreateCommandPool();
         //CreateDescriptorPool();
         //CreateDescriptorSets();

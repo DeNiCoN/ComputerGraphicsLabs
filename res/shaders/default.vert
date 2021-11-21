@@ -21,7 +21,7 @@ layout(location = 2) in vec3 color;
 layout(location = 3) in vec2 uv;
 
 layout(location = 0) out vec3 normalOut;
-layout(location = 1) out vec3 colorOut;
+layout(location = 1) out vec3 FragPos;
 layout(location = 2) out vec2 uvOut;
 
 //void main()
@@ -33,7 +33,7 @@ layout(location = 2) out vec2 uvOut;
 //}
 void main() {
     gl_Position = scene.projview * constants.model * vec4(position, 1.0);
-    normalOut = normal;
-    colorOut = color;
+    normalOut = vec3(constants.model * vec4(normal, 0.f));
+    FragPos = vec3(constants.model * vec4(position, 1.f));
     uvOut = uv;
 }
