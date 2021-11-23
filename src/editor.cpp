@@ -8,6 +8,7 @@
 #include "grid_object.hpp"
 #include "mesh_object.hpp"
 #include <glm/gtx/closest_point.hpp>
+#include <algorithm>
 
 void Editor::InitWindow()
 {
@@ -57,11 +58,6 @@ void Editor::OnResize(int width, int height)
 
 void Editor::OnMouseMove(double xpos, double ypos)
 {
-    //TODO Camera update viewport
-    //Compute delta
-    //Check does it imgui?
-    //Update camera
-
     double dx = xpos - m_old_xpos;
     double dy = ypos - m_old_ypos;
 
@@ -74,14 +70,18 @@ void Editor::OnMouseMove(double xpos, double ypos)
     int state = glfwGetMouseButton(m_window, GLFW_MOUSE_BUTTON_LEFT);
     if (state == GLFW_PRESS)
     {
-        const glm::vec3 sideways = glm::normalize(glm::cross({0.f, 1.f, 0.f}, m_camera.direction));
-
-        m_camera.direction = glm::rotate(static_cast<float>(-dx * 0.001f),
-                                         glm::vec3{0, 1, 0}) * glm::vec4(m_camera.direction, 1.f);
-
-        m_camera.direction = glm::rotate(static_cast<float>(dy * 0.001f),
-                                         sideways) * glm::vec4(m_camera.direction, 1.f);
+        m_orbiting_camera.yaw += static_cast<float>(-dx * 0.001f);
+        m_orbiting_camera.pitch += static_cast<float>(-dy * 0.001f);
     }
+
+    m_orbiting_camera.Update();
+}
+
+void Editor::OnMouseScroll(double xoffset, double yoffset)
+{
+    m_orbiting_camera.radius -= yoffset * 0.1f * m_orbiting_camera.radius;
+    m_orbiting_camera.radius = std::max(0.1f, m_orbiting_camera.radius);
+    m_orbiting_camera.Update();
 }
 
 void Editor::InitWindowCallbacks()
@@ -92,6 +92,9 @@ void Editor::InitWindowCallbacks()
     });
     glfwSetCursorPosCallback(m_window, [](GLFWwindow* window, double xpos, double ypos) {
         reinterpret_cast<Editor*>(glfwGetWindowUserPointer(window))->OnMouseMove(xpos, ypos);
+    });
+    glfwSetScrollCallback(m_window, [](GLFWwindow* window, double xoffset, double yoffset) {
+        reinterpret_cast<Editor*>(glfwGetWindowUserPointer(window))->OnMouseScroll(xoffset, yoffset);
     });
 }
 
@@ -120,32 +123,12 @@ void Editor::Update(float delta)
         glfwSetInputMode(m_window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
     }
 
-    glm::vec3 forward;
-    if (m_camera.GetProjectionType() == Projection::PERSPECTIVE)
+    if (focused.has_value())
     {
-        forward = glm::normalize(m_camera.direction);
+        m_orbiting_camera.center = m_objects[focused.value()].object->position;
+        m_orbiting_camera.Update();
     }
-    else if (m_camera.GetProjectionType() == Projection::ORTHO)
-    {
-        forward = glm::normalize(
-            glm::vec3(m_camera.direction.x, 0, m_camera.direction.z));
-    }
-    glm::vec3 sideways = glm::normalize(glm::cross({0.f, 1.f, 0.f}, m_camera.direction));
 
-    glm::vec3 move = {0, 0, 0};
-    if (glfwGetKey(m_window, GLFW_KEY_W))
-        move += forward;
-    if (glfwGetKey(m_window, GLFW_KEY_S))
-        move += -forward;
-    if (glfwGetKey(m_window, GLFW_KEY_D))
-        move += -sideways;
-    if (glfwGetKey(m_window, GLFW_KEY_A))
-        move += sideways;
-
-    if (glm::length2(move) > 0)
-        move = glm::normalize(move);
-
-    m_camera.position += move * delta;
     m_engine.m_ubo.view = m_camera.GetView();
     m_engine.m_ubo.proj = m_camera.GetProjection();
     m_engine.m_ubo.time += delta;
@@ -161,9 +144,19 @@ void Editor::Update(float delta)
     }
 
 
-    for (auto& obj : m_rotate)
+    for (auto& orbit : m_orbit)
     {
-        obj->yaw += 0.1 * delta;
+        orbit.angle += 3 * delta / orbit.radius;
+        orbit.objAngle += 1 * delta;
+        orbit.object->position = {orbit.radius, 0, 0};
+        orbit.object->position =
+            glm::rotate(glm::angleAxis(orbit.angle, orbit.axis),
+                        orbit.object->position);
+
+        auto angles = glm::eulerAngles(glm::angleAxis(orbit.objAngle, orbit.objAxis));
+        orbit.object->yaw = angles.x;
+        orbit.object->pitch = angles.y;
+        orbit.object->roll = angles.z;
     }
 }
 
@@ -228,12 +221,6 @@ void Editor::InitImGui()
 
 void Editor::InitDefaultObjects()
 {
-    m_mesh_manager.NewFromObj("Planet", Files::Local("res/models/Mars.obj"));
-
-    m_texture_manager.NewFromFile(
-        "mine",
-        Files::Local("res/textures/marscyl1l.jpg"));
-
     m_material_manager.FromShaders("Default",
                                    Files::Local("res/shaders/default.vert"),
                                    Files::Local("res/shaders/default.frag"));
@@ -243,20 +230,168 @@ void Editor::InitDefaultObjects()
     m_material_manager.FromShaders("Model_Normal",
                                    Files::Local("res/shaders/default.vert"),
                                    Files::Local("res/shaders/model_normal.frag"));
+    m_material_manager.Textureless("White_Bloom",
+                                  Files::Local("res/shaders/default.vert"),
+                                  Files::Local("res/shaders/white_bloom.frag"));
 
-    auto armor = std::make_shared<MeshObject>(
+
+    m_mesh_manager.NewFromObj("flintlock", Files::Local("res/models/fa_flintlockPistol.obj"));
+    m_mesh_manager.NewFromObj("pot", Files::Local("res/models/Pot.obj"));
+    m_mesh_manager.NewFromObj("cherry", Files::Local("res/models/cherry.obj"));
+    m_mesh_manager.NewFromObj("paper", Files::Local("res/models/br_tpaperRoll.obj"));
+    m_mesh_manager.NewFromObj("orange", Files::Local("res/models/fr_caraOrange.obj"));
+    m_mesh_manager.NewFromObj("lemon", Files::Local("res/models/fr_avalonLemon.obj"));
+    m_mesh_manager.NewFromObj("sun", Files::Local("res/models/sun.obj"));
+
+    m_texture_manager.NewFromFile("paper_ao", Files::Local("res/textures/br_tpaperRoll_ao.jpg"));
+    m_texture_manager.NewFromFile("paper_nrm", Files::Local("res/textures/br_tpaperRoll_nrm.jpg"));
+    m_texture_manager.NewFromFile("paper_rough", Files::Local("res/textures/br_tpaperRoll_rough.jpg"));
+    m_texture_manager.NewFromFile("paper_specular", Files::Local("res/textures/br_tpaperRoll_specular.jpg"));
+    m_texture_manager.NewFromFile("paper_albedo", Files::Local("res/textures/br_tpaperRoll_albedo.jpg"));
+    m_texture_manager.NewFromFile("paper_scattering", Files::Local("res/textures/br_tpaperRoll_scattering.jpg"));
+
+    m_texture_manager.NewFromFile("flintlock_ao", Files::Local("res/textures/fa_flintlockPistol_ao.jpg"));
+    m_texture_manager.NewFromFile("flintlock_nrm", Files::Local("res/textures/fa_flintlockPistol_nrm.jpg"));
+    m_texture_manager.NewFromFile("flintlock_rough", Files::Local("res/textures/fa_flintlockPistol_rough.jpg"));
+    m_texture_manager.NewFromFile("flintlock_specular", Files::Local("res/textures/fa_flintlockPistol_specular.jpg"));
+    m_texture_manager.NewFromFile("flintlock_albedo", Files::Local("res/textures/fa_flintlockPistol_albedo.jpg"));
+
+    m_texture_manager.NewFromFile("lemon_nrm", Files::Local("res/textures/fr_avalonLemon_nrm.jpg"));
+    m_texture_manager.NewFromFile("lemon_rough", Files::Local("res/textures/fr_avalonLemon_rough.jpg"));
+    m_texture_manager.NewFromFile("lemon_specular", Files::Local("res/textures/fr_avalonLemon_specular.jpg"));
+    m_texture_manager.NewFromFile("lemon_albedo", Files::Local("res/textures/fr_avalonLemon_albedo.jpg"));
+
+    m_texture_manager.NewFromFile("orange_nrm", Files::Local("res/textures/fr_caraOrange_nrm.jpg"));
+    m_texture_manager.NewFromFile("orange_rough", Files::Local("res/textures/fr_caraOrange_rough.jpg"));
+    m_texture_manager.NewFromFile("orange_specular", Files::Local("res/textures/fr_caraOrange_specular.jpg"));
+    m_texture_manager.NewFromFile("orange_albedo", Files::Local("res/textures/fr_caraOrange_albedo.jpg"));
+    m_texture_manager.NewFromFile("orange_scattering", Files::Local("res/textures/fr_caraOrange_scattering.jpg"));
+
+    m_texture_manager.NewFromFile("pot_specular", Files::Local("res/textures/pot_specular.jpg"));
+    m_texture_manager.NewFromFile("pot_normal", Files::Local("res/textures/pot_normal.jpg"));
+    m_texture_manager.NewFromFile("pot_gloss", Files::Local("res/textures/pot_gloss.jpg"));
+    m_texture_manager.NewFromFile("pot_albedo", Files::Local("res/textures/pot_albedo.jpg"));
+
+    m_texture_manager.NewFromFile("cherry_specular", Files::Local("res/textures/cherry_specular.tga.png"));
+    m_texture_manager.NewFromFile("cherry_normal", Files::Local("res/textures/cherry_normal.tga.png"));
+    m_texture_manager.NewFromFile("cherry_gloss", Files::Local("res/textures/cherry_gloss.tga.png"));
+    m_texture_manager.NewFromFile("cherry_color", Files::Local("res/textures/cherry_color.tga.png"));
+    m_texture_manager.NewFromFile("cherry_ao", Files::Local("res/textures/cherry_ao.tga.png"));
+
+    m_texture_manager.NewFromFile("sun_color", Files::Local("res/textures/sun.jpg"));
+
+    auto paper = std::make_shared<MeshObject>(
         m_mesh_renderer,
-        m_mesh_manager.Get("Planet"),
+        m_mesh_manager.Get("paper"),
         m_material_manager.Get("Default"),
-        m_texture_manager.NewTextureSet(m_texture_manager.Get("mine")),
+        m_texture_manager.NewTextureSet(m_texture_manager.Get("paper_albedo")),
         m_material_manager);
+    paper->mesh_center = {0, 0.05, 0};
+    paper->scale = 10;
 
-    armor->position = {-4, 1, 5};
-    armor->scale = 3;
-    armor->yaw = 0.4;
+    m_objects.Add("Paper", paper);
+    m_orbit.push_back({
+            .object = paper,
+            .center = {0, 0, 0},
+            .radius = 4,
+            .axis = {glm::normalize(glm::vec3(0, 1, 0.1))},
+            .objAxis = {glm::normalize(glm::vec3(0, 1, 2.5))}
+        });
 
-    m_objects.Add("Planet", armor);
-    m_rotate.push_back(armor);
+    auto sun = std::make_shared<MeshObject>(
+        m_mesh_renderer,
+        m_mesh_manager.Get("sun"),
+        m_material_manager.Get("White_Bloom"),
+        nullptr,
+        m_material_manager);
+    sun->mesh_center = {1, 1, 1};
+    m_objects.Add("Sun", sun);
+
+    auto flintlock = std::make_shared<MeshObject>(
+        m_mesh_renderer,
+        m_mesh_manager.Get("flintlock"),
+        m_material_manager.Get("Default"),
+        m_texture_manager.NewTextureSet(m_texture_manager.Get("flintlock_albedo")),
+        m_material_manager);
+    flintlock->scale = 10;
+    flintlock->mesh_center = {0, 0.01, 0};
+    m_objects.Add("Flintlock", flintlock);
+    m_orbit.push_back({
+            .object = flintlock,
+            .center = {0, 0, 0},
+            .radius = 8,
+            .axis = {glm::normalize(glm::vec3(0.1, 1, 0.1))},
+            .objAxis = {glm::normalize(glm::vec3(2, 1, 2.5))}
+        });
+
+    auto lemon = std::make_shared<MeshObject>(
+        m_mesh_renderer,
+        m_mesh_manager.Get("lemon"),
+        m_material_manager.Get("Default"),
+        m_texture_manager.NewTextureSet(m_texture_manager.Get("lemon_albedo")),
+        m_material_manager);
+    lemon->scale = 10;
+    lemon->mesh_center = {0, 0.025, 0};
+    m_objects.Add("Lemon", lemon);
+    m_orbit.push_back({
+            .object = lemon,
+            .center = {0, 0, 0},
+            .radius = 12,
+            .axis = {glm::normalize(glm::vec3(0.2, 1, 0.0))},
+            .objAxis = {glm::normalize(glm::vec3(2, 1, 0))}
+        });
+
+    auto orange = std::make_shared<MeshObject>(
+        m_mesh_renderer,
+        m_mesh_manager.Get("orange"),
+        m_material_manager.Get("Default"),
+        m_texture_manager.NewTextureSet(m_texture_manager.Get("orange_albedo")),
+        m_material_manager);
+    orange->scale = 10;
+    orange->mesh_center = {0, 0.03, 0};
+    m_objects.Add("Orange", orange);
+    m_orbit.push_back({
+            .object = orange,
+            .center = {0, 0, 0},
+            .radius = 16,
+            .axis = {glm::normalize(glm::vec3(0.05, 1, 0.1))},
+            .objAxis = {glm::normalize(glm::vec3(2, 1, 0.4))}
+        });
+
+    auto pot = std::make_shared<MeshObject>(
+        m_mesh_renderer,
+        m_mesh_manager.Get("pot"),
+        m_material_manager.Get("Default"),
+        m_texture_manager.NewTextureSet(m_texture_manager.Get("pot_albedo")),
+        m_material_manager);
+    pot->scale = 0.001;
+    pot->mesh_center = {0, 10, 0};
+
+    m_objects.Add("Pot", pot);
+    m_orbit.push_back({
+            .object = pot,
+            .center = {0, 0, 0},
+            .radius = 20,
+            .axis = {glm::normalize(glm::vec3(0.05, 1, 0.4))},
+            .objAxis = {glm::normalize(glm::vec3(4, 1, 0.4))}
+        });
+
+    auto cherry = std::make_shared<MeshObject>(
+        m_mesh_renderer,
+        m_mesh_manager.Get("cherry"),
+        m_material_manager.Get("Default"),
+        m_texture_manager.NewTextureSet(m_texture_manager.Get("cherry_color")),
+        m_material_manager);
+    cherry->scale = 0.001;
+    cherry->mesh_center = {300, 300, 300};
+    m_orbit.push_back({
+            .object = cherry,
+            .center = {0, 0, 0},
+            .radius = 24,
+            .axis = {glm::normalize(glm::vec3(0.05, 1, 0.01))},
+            .objAxis = {glm::normalize(glm::vec3(0.1, 1, 0.2))}
+        });
+    m_objects.Add("Cherry", cherry);
 
     m_objects.Add("Grid", std::make_shared<GridObject>(m_engine));
 }
@@ -354,6 +489,20 @@ void Editor::ImGuiEditorObjects()
             {
                 if (ImGui::Checkbox("Visible", &m_objects[i].is_enabled))
                 {
+                }
+
+                ImGui::SameLine();
+
+                if (ImGui::Button("Focus"))
+                {
+                    if (focused == i)
+                    {
+                        focused = std::nullopt;
+                    }
+                    else
+                    {
+                        focused = i;
+                    }
                 }
                 m_objects[i].object->ImGuiOptions();
                 ImGui::TreePop();

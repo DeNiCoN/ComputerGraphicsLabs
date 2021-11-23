@@ -294,7 +294,8 @@ Mesh::Ptr MeshManager::NewFromVertices(const std::string& name,
 Material::Ptr MaterialManager::Create(
     const std::string &name,
     const std::filesystem::path &vertex,
-    const std::filesystem::path &fragment
+    const std::filesystem::path &fragment,
+    bool textures
     )
 {
     Material::Ptr result = std::make_shared<Material>();
@@ -378,9 +379,13 @@ Material::Ptr MaterialManager::Create(
 
     vk::PipelineLayoutCreateInfo layoutInfo;
     auto globalLayout = m_engine.GetGlobalSetLayout();
-    auto textureLayout = m_engine.GetTextureSetLayout();
 
-    auto layouts = {globalLayout, textureLayout};
+    std::vector<vk::DescriptorSetLayout> layouts;
+    layouts.push_back(globalLayout);
+
+    if (textures)
+        layouts.push_back(m_engine.GetTextureSetLayout());
+
     vk::PushConstantRange range(
         vk::ShaderStageFlagBits::eAllGraphics,
         0, sizeof(PushConstants)
@@ -415,6 +420,19 @@ Material::Ptr MaterialManager::FromShaders(
     const std::filesystem::path &fragment)
 {
     Material::Ptr result = Create(name, vertex, fragment);
+    m_materials[name] = result;
+    m_names[result] = name;
+    m_used_shaders[name] = {vertex, fragment};
+
+    return result;
+}
+
+Material::Ptr MaterialManager::Textureless(
+    const std::string &name,
+    const std::filesystem::path &vertex,
+    const std::filesystem::path &fragment)
+{
+    Material::Ptr result = Create(name, vertex, fragment, false);
     m_materials[name] = result;
     m_names[result] = name;
     m_used_shaders[name] = {vertex, fragment};

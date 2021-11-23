@@ -18,12 +18,14 @@ public:
     {
         glm::mat4 rot = glm::identity<glm::mat4>();
         glm::mat4 trans = glm::identity<glm::mat4>();
+        glm::mat4 displ = glm::identity<glm::mat4>();
         glm::mat4 s = glm::identity<glm::mat4>();
 
         rot = glm::yawPitchRoll(yaw, pitch, roll);
         trans = glm::translate(trans, position);
+        displ = glm::translate(displ, -mesh_center);
         s = glm::scale(s, {scale, scale, scale});
-        m_renderer.Add(m_mesh, m_material, m_textures, trans * rot * s);
+        m_renderer.Add(m_mesh, m_material, m_textures, trans * rot * s * displ);
     }
 
     void ImGuiOptions() override
@@ -41,6 +43,8 @@ public:
             ImGui::EndCombo();
         }
     };
+
+    glm::vec3 mesh_center = {0, 0, 0};
 
 private:
     MeshRenderer& m_renderer;

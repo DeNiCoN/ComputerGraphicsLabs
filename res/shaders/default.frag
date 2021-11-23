@@ -23,13 +23,13 @@ layout(set = 0, binding = 0) uniform UniformBufferObject
 void main() {
     vec4 objectColor = texture(diffuse, uv);
     vec3 lightColor = vec3(1.f);
-    vec3 lightPos = vec3(100, 0, -100.f);
+    vec3 lightPos = vec3(0, 0, 0);
 
     if (objectColor.w < 0.001f)
         discard;
 
     // ambient
-    float ambientStrength = 0.01;
+    float ambientStrength = 0.1;
     vec3 ambient = ambientStrength * lightColor;
 
     // diffuse

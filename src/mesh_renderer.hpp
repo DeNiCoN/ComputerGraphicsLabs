@@ -105,6 +105,10 @@ public:
     Material::Ptr FromShaders(const std::string& name,
                               const std::filesystem::path& vertex,
                               const std::filesystem::path& fragment);
+
+    Material::Ptr Textureless(const std::string& name,
+                              const std::filesystem::path& vertex,
+                              const std::filesystem::path& fragment);
     Material::Ptr Get(const std::string& name) const {
         return m_materials.at(name);
     }
@@ -129,7 +133,8 @@ private:
 
     Material::Ptr Create(const std::string& name,
                          const std::filesystem::path& vertex,
-                         const std::filesystem::path& fragment);
+                         const std::filesystem::path& fragment,
+                         bool textures = true);
 
     Engine& m_engine;
 };

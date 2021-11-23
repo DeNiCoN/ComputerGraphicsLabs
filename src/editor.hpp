@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <ranges>
 #include <numeric>
+#include <glm/gtx/quaternion.hpp>
+#include "orbiting_camera.hpp"
 
 class Editor
 {
@@ -50,6 +52,7 @@ private:
     ObjectGroup m_objects;
 
     Camera m_camera;
+    OrbitingCamera m_orbiting_camera {m_camera};
     unsigned m_width = 800;
     unsigned m_height = 600;
     double m_old_xpos = 0;
@@ -71,6 +74,7 @@ private:
 
     void OnResize(int width, int height);
     void OnMouseMove(double xpos, double ypos);
+    void OnMouseScroll(double xoffset, double yoffset);
 
     vk::UniqueDescriptorPool m_imguiDescriptorPool;
     DebugPipelines m_debug;
@@ -80,5 +84,17 @@ private:
     MeshRenderer m_mesh_renderer;
     TextureManager m_texture_manager { m_engine };
 
-    std::vector<EditorObject::Ptr> m_rotate;
+    struct Orbit
+    {
+        EditorObject::Ptr object;
+        glm::vec3 center {0, 0, 0};
+        float radius = 1;
+        glm::vec3 axis = {0, 1, 0};
+        glm::vec3 objAxis = {0, 1, 0};
+        float angle = 0;
+        float objAngle = 0;
+    };
+    std::vector<Orbit> m_orbit;
+
+    std::optional<int> focused;
 };
