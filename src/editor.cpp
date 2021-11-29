@@ -123,27 +123,6 @@ void Editor::Update(float delta)
         glfwSetInputMode(m_window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
     }
 
-    if (focused.has_value())
-    {
-        m_orbiting_camera.center = m_objects[focused.value()].object->position;
-        m_orbiting_camera.Update();
-    }
-
-    m_engine.m_ubo.view = m_camera.GetView();
-    m_engine.m_ubo.proj = m_camera.GetProjection();
-    m_engine.m_ubo.time += delta;
-    m_engine.m_ubo.viewPos = m_camera.position;
-
-    auto extent = m_engine.GetSwapChainExtent();
-    m_engine.m_ubo.resolution = glm::vec2(extent.width, extent.height);
-
-    //Check which axis does cursor touch
-    if (m_objects.SelectedSize())
-    {
-        m_objects.GetSelectedPosition();
-    }
-
-
     for (auto& orbit : m_orbit)
     {
         orbit.angle += 3 * delta / orbit.radius;
@@ -158,6 +137,40 @@ void Editor::Update(float delta)
         orbit.object->pitch = angles.y;
         orbit.object->roll = angles.z;
     }
+
+    if (focused.has_value())
+    {
+        auto focusedPtr = m_objects[focused.value()].object;
+        m_orbiting_camera.center = focusedPtr->position;
+        if (m_orbiting_camera.radius < 1.5)
+        {
+            auto translate = glm::translate(-focusedPtr->position);
+            auto translateInv = glm::translate(focusedPtr->position);
+            m_camera.transform =
+                translateInv * glm::yawPitchRoll(
+                    focusedPtr->yaw, focusedPtr->pitch, focusedPtr->roll)
+                * translate;
+        }
+        else
+        {
+            m_camera.transform = glm::identity<glm::mat4>();
+        }
+        m_orbiting_camera.Update();
+
+    }
+    else
+    {
+        m_camera.transform = glm::identity<glm::mat4>();
+    }
+
+    m_engine.m_ubo.view = m_camera.GetView();
+    m_engine.m_ubo.proj = m_camera.GetProjection();
+    m_engine.m_ubo.time += delta;
+    m_engine.m_ubo.viewPos = m_camera.position;
+
+    auto extent = m_engine.GetSwapChainExtent();
+    m_engine.m_ubo.resolution = glm::vec2(extent.width, extent.height);
+
 }
 
 void Editor::InitImGui()
@@ -284,7 +297,13 @@ void Editor::InitDefaultObjects()
         m_mesh_renderer,
         m_mesh_manager.Get("paper"),
         m_material_manager.Get("Default"),
-        m_texture_manager.NewTextureSet(m_texture_manager.Get("paper_albedo")),
+        m_texture_manager.NewTextureSet(
+            m_texture_manager.Get("paper_albedo"),
+            m_texture_manager.Get("paper_nrm"),
+            m_texture_manager.Get("paper_specular"),
+            m_texture_manager.Get("paper_rough"),
+            m_texture_manager.Get("paper_ao")
+            ),
         m_material_manager);
     paper->mesh_center = {0, 0.05, 0};
     paper->scale = 10;
@@ -302,7 +321,13 @@ void Editor::InitDefaultObjects()
         m_mesh_renderer,
         m_mesh_manager.Get("sun"),
         m_material_manager.Get("White_Bloom"),
-        nullptr,
+        m_texture_manager.NewTextureSet(
+            m_texture_manager.Get("sun_color"),
+            nullptr,
+            nullptr,
+            nullptr,
+            nullptr
+            ),
         m_material_manager);
     sun->mesh_center = {1, 1, 1};
     m_objects.Add("Sun", sun);
@@ -311,7 +336,13 @@ void Editor::InitDefaultObjects()
         m_mesh_renderer,
         m_mesh_manager.Get("flintlock"),
         m_material_manager.Get("Default"),
-        m_texture_manager.NewTextureSet(m_texture_manager.Get("flintlock_albedo")),
+        m_texture_manager.NewTextureSet(
+            m_texture_manager.Get("flintlock_albedo"),
+            m_texture_manager.Get("flintlock_nrm"),
+            m_texture_manager.Get("flintlock_specular"),
+            m_texture_manager.Get("flintlock_rough"),
+            m_texture_manager.Get("flintlock_ao")
+            ),
         m_material_manager);
     flintlock->scale = 10;
     flintlock->mesh_center = {0, 0.01, 0};
@@ -328,7 +359,13 @@ void Editor::InitDefaultObjects()
         m_mesh_renderer,
         m_mesh_manager.Get("lemon"),
         m_material_manager.Get("Default"),
-        m_texture_manager.NewTextureSet(m_texture_manager.Get("lemon_albedo")),
+        m_texture_manager.NewTextureSet(
+            m_texture_manager.Get("lemon_albedo"),
+            m_texture_manager.Get("lemon_nrm"),
+            m_texture_manager.Get("lemon_specular"),
+            m_texture_manager.Get("lemon_rough"),
+            nullptr
+            ),
         m_material_manager);
     lemon->scale = 10;
     lemon->mesh_center = {0, 0.025, 0};
@@ -345,7 +382,13 @@ void Editor::InitDefaultObjects()
         m_mesh_renderer,
         m_mesh_manager.Get("orange"),
         m_material_manager.Get("Default"),
-        m_texture_manager.NewTextureSet(m_texture_manager.Get("orange_albedo")),
+        m_texture_manager.NewTextureSet(
+            m_texture_manager.Get("orange_albedo"),
+            m_texture_manager.Get("orange_nrm"),
+            m_texture_manager.Get("orange_specular"),
+            m_texture_manager.Get("orange_rough"),
+            nullptr
+            ),
         m_material_manager);
     orange->scale = 10;
     orange->mesh_center = {0, 0.03, 0};
@@ -362,7 +405,13 @@ void Editor::InitDefaultObjects()
         m_mesh_renderer,
         m_mesh_manager.Get("pot"),
         m_material_manager.Get("Default"),
-        m_texture_manager.NewTextureSet(m_texture_manager.Get("pot_albedo")),
+        m_texture_manager.NewTextureSet(
+            m_texture_manager.Get("pot_albedo"),
+            m_texture_manager.Get("pot_normal"),
+            m_texture_manager.Get("pot_specular"),
+            m_texture_manager.Get("pot_gloss"),
+            nullptr
+            ),
         m_material_manager);
     pot->scale = 0.001;
     pot->mesh_center = {0, 10, 0};
@@ -380,7 +429,13 @@ void Editor::InitDefaultObjects()
         m_mesh_renderer,
         m_mesh_manager.Get("cherry"),
         m_material_manager.Get("Default"),
-        m_texture_manager.NewTextureSet(m_texture_manager.Get("cherry_color")),
+        m_texture_manager.NewTextureSet(
+            m_texture_manager.Get("cherry_color"),
+            m_texture_manager.Get("cherry_normal"),
+            m_texture_manager.Get("cherry_specular"),
+            m_texture_manager.Get("cherry_gloss"),
+            m_texture_manager.Get("cherry_ao")
+            ),
         m_material_manager);
     cherry->scale = 0.001;
     cherry->mesh_center = {300, 300, 300};
@@ -429,6 +484,14 @@ void Editor::ImGuiFrame()
     ImGui::End();
 
     ImGui::Begin("Camera");
+    ImGui::Text("Center %.3f %.3f %.3f",
+        m_orbiting_camera.center.x,
+        m_orbiting_camera.center.y,
+        m_orbiting_camera.center.z);
+
+    ImGui::Text("Radius %.3f",
+        m_orbiting_camera.radius);
+
     ImGui::Text("Position %.3f %.3f %.3f",
                 m_camera.position.x,
                 m_camera.position.y,
@@ -450,6 +513,7 @@ void Editor::ImGuiFrame()
         {
             m_camera.SetPerspective(m_camera.m_fov, AspectRatio(), 0.01, 100);
         }
+        m_orbiting_camera.Update();
 
         ImGui::EndCombo();
     }

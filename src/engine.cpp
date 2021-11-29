@@ -733,22 +733,55 @@ void Engine::CreateGlobalSetLayout()
     uboLayoutBinding.descriptorCount = 1;
     uboLayoutBinding.stageFlags = vk::ShaderStageFlagBits::eAllGraphics;
 
+    vk::DescriptorSetLayoutBinding cubemapLayoutBinding;
+    cubemapLayoutBinding.binding = 1;
+    cubemapLayoutBinding.descriptorType =
+        vk::DescriptorType::eCombinedImageSampler;
+    cubemapLayoutBinding.descriptorCount = 1;
+    cubemapLayoutBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
+
+    auto bindings = {uboLayoutBinding, cubemapLayoutBinding};
     vk::DescriptorSetLayoutCreateInfo layoutInfo;
-    layoutInfo.setBindings(uboLayoutBinding);
+    layoutInfo.setBindings(bindings);
 
     m_globalSetLayout = m_device->createDescriptorSetLayoutUnique(layoutInfo);
 }
 
 void Engine::CreateTextureSetLayout()
 {
-    vk::DescriptorSetLayoutBinding textureLayoutBinding;
-    textureLayoutBinding.binding = 0;
-    textureLayoutBinding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
-    textureLayoutBinding.descriptorCount = 1;
-    textureLayoutBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
+    vk::DescriptorSetLayoutBinding albedo;
+    albedo.binding = 0;
+    albedo.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    albedo.descriptorCount = 1;
+    albedo.stageFlags = vk::ShaderStageFlagBits::eFragment;
 
+    vk::DescriptorSetLayoutBinding normal;
+    normal.binding = 1;
+    normal.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    normal.descriptorCount = 1;
+    normal.stageFlags = vk::ShaderStageFlagBits::eFragment;
+
+    vk::DescriptorSetLayoutBinding specular;
+    specular.binding = 2;
+    specular.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    specular.descriptorCount = 1;
+    specular.stageFlags = vk::ShaderStageFlagBits::eFragment;
+
+    vk::DescriptorSetLayoutBinding rough;
+    rough.binding = 3;
+    rough.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    rough.descriptorCount = 1;
+    rough.stageFlags = vk::ShaderStageFlagBits::eFragment;
+
+    vk::DescriptorSetLayoutBinding ao;
+    ao.binding = 4;
+    ao.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    ao.descriptorCount = 1;
+    ao.stageFlags = vk::ShaderStageFlagBits::eFragment;
+
+    auto bindings = {albedo, normal, specular, rough, ao};
     vk::DescriptorSetLayoutCreateInfo layoutInfo;
-    layoutInfo.setBindings(textureLayoutBinding);
+    layoutInfo.setBindings(bindings);
 
     m_textureSetLayout = m_device->createDescriptorSetLayoutUnique(layoutInfo);
 }

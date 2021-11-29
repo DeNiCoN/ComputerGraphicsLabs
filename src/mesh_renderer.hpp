@@ -49,7 +49,13 @@ public:
     Texture::Ptr NewFromFile(const std::string& name,
                              const std::filesystem::path& filename);
 
-    TextureSet::Ptr NewTextureSet(Texture::Ptr diffuse);
+    TextureSet::Ptr NewTextureSet(
+        Texture::Ptr albedo,
+        Texture::Ptr normal,
+        Texture::Ptr specular,
+        Texture::Ptr roughness,
+        Texture::Ptr ao
+        );
 
     Texture::Ptr Get(const std::string& name) const
     {
@@ -94,6 +100,7 @@ struct Material
     using Ptr = std::shared_ptr<Material>;
     vk::UniquePipelineLayout pipelineLayout;
     vk::UniquePipeline pipeline;
+    bool textures = true;
 };
 
 class MaterialManager

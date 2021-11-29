@@ -1,4 +1,5 @@
 #include "mesh_renderer.hpp"
+#include "initializers.hpp"
 #include <tiny_obj_loader.h>
 #include <spdlog/spdlog.h>
 #include "shader_compiler.hpp"
@@ -179,7 +180,12 @@ Texture::Ptr TextureManager::NewFromFile(const std::string &name,
     return result;
 }
 
-TextureSet::Ptr TextureManager::NewTextureSet(Texture::Ptr diffuse)
+TextureSet::Ptr TextureManager::NewTextureSet(
+    Texture::Ptr albedo,
+    Texture::Ptr normal,
+    Texture::Ptr specular,
+    Texture::Ptr roughness,
+    Texture::Ptr ao)
 {
     auto result = std::make_shared<TextureSet>();
     result->diffuse = diffuse;
@@ -206,6 +212,9 @@ TextureSet::Ptr TextureManager::NewTextureSet(Texture::Ptr diffuse)
     diffuseWrite.descriptorType = vk::DescriptorType::eCombinedImageSampler;
     diffuseWrite.pImageInfo = &imageBufferInfo;
 
+    auto writes = {
+        init::ImageWriteDescriptorSet(0, result->descriptor, imageBufferInfo)
+    };
     m_engine.GetDevice().updateDescriptorSets(diffuseWrite, nullptr);
     return result;
 }
@@ -384,7 +393,11 @@ Material::Ptr MaterialManager::Create(
     layouts.push_back(globalLayout);
 
     if (textures)
+    {
         layouts.push_back(m_engine.GetTextureSetLayout());
+    }
+
+    result->textures = textures;
 
     vk::PushConstantRange range(
         vk::ShaderStageFlagBits::eAllGraphics,
@@ -470,10 +483,12 @@ void MeshRenderer::WriteCmdBuffer(vk::CommandBuffer cmd, Engine& engine)
     {
         if (drawData.textures != lastTextureSet)
         {
-            lastTextureSet = drawData.textures;
+            if (drawData.material->textures)
+                lastTextureSet = drawData.textures;
+
             if (drawData.material == lastMaterial)
             {
-                if (lastTextureSet != nullptr)
+                if (lastTextureSet != nullptr && drawData.material->textures)
                 {
                     cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
                                            *drawData.material->pipelineLayout, 1,
@@ -489,7 +504,7 @@ void MeshRenderer::WriteCmdBuffer(vk::CommandBuffer cmd, Engine& engine)
                                    *drawData.material->pipelineLayout, 0,
                                    engine.GetCurrentGlobalSet(), nullptr);
 
-            if (lastTextureSet != nullptr)
+            if (lastTextureSet != nullptr && drawData.material->textures)
             {
                 cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
                                        *drawData.material->pipelineLayout, 1,
