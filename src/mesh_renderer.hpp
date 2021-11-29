@@ -35,7 +35,11 @@ struct Texture
 struct TextureSet
 {
     using Ptr = std::shared_ptr<TextureSet>;
-    Texture::Ptr diffuse;
+    Texture::Ptr albedo;
+    Texture::Ptr normal;
+    Texture::Ptr specular;
+    Texture::Ptr roughness;
+    Texture::Ptr ao;
     vk::DescriptorSet descriptor;
 };
 
@@ -46,8 +50,13 @@ public:
         : m_engine(engine)
     {}
 
+    void Init();
+
     Texture::Ptr NewFromFile(const std::string& name,
                              const std::filesystem::path& filename);
+
+    Texture::Ptr NewFromPixels(const std::string& name, void* pixel_ptr,
+                              int texWidth, int texHeight);
 
     TextureSet::Ptr NewTextureSet(
         Texture::Ptr albedo,
@@ -63,6 +72,11 @@ public:
     }
 private:
     std::unordered_map<std::string, Texture::Ptr> m_textures;
+    Texture::Ptr m_default_albedo;
+    Texture::Ptr m_default_normal;
+    Texture::Ptr m_default_specular;
+    Texture::Ptr m_default_roughness;
+    Texture::Ptr m_default_ao;
     Engine& m_engine;
 };
 

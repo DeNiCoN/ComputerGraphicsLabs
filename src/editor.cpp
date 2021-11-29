@@ -79,6 +79,9 @@ void Editor::OnMouseMove(double xpos, double ypos)
 
 void Editor::OnMouseScroll(double xoffset, double yoffset)
 {
+    if (ImGui::GetIO().WantCaptureMouse)
+        return;
+
     m_orbiting_camera.radius -= yoffset * 0.1f * m_orbiting_camera.radius;
     m_orbiting_camera.radius = std::max(0.1f, m_orbiting_camera.radius);
     m_orbiting_camera.Update();
@@ -234,6 +237,8 @@ void Editor::InitImGui()
 
 void Editor::InitDefaultObjects()
 {
+    m_texture_manager.Init();
+
     m_material_manager.FromShaders("Default",
                                    Files::Local("res/shaders/default.vert"),
                                    Files::Local("res/shaders/default.frag"));
@@ -243,6 +248,21 @@ void Editor::InitDefaultObjects()
     m_material_manager.FromShaders("Model_Normal",
                                    Files::Local("res/shaders/default.vert"),
                                    Files::Local("res/shaders/model_normal.frag"));
+    m_material_manager.FromShaders("Texture_Albedo",
+                                   Files::Local("res/shaders/default.vert"),
+                                   Files::Local("res/shaders/texture_albedo.frag"));
+    m_material_manager.FromShaders("Texture_Normal",
+                                   Files::Local("res/shaders/default.vert"),
+                                   Files::Local("res/shaders/texture_normal.frag"));
+    m_material_manager.FromShaders("Texture_Specular",
+                                   Files::Local("res/shaders/default.vert"),
+                                   Files::Local("res/shaders/texture_specular.frag"));
+    m_material_manager.FromShaders("Texture_Roughness",
+                                   Files::Local("res/shaders/default.vert"),
+                                   Files::Local("res/shaders/texture_roughness.frag"));
+    m_material_manager.FromShaders("Texture_AO",
+                                   Files::Local("res/shaders/default.vert"),
+                                   Files::Local("res/shaders/texture_ao.frag"));
     m_material_manager.Textureless("White_Bloom",
                                   Files::Local("res/shaders/default.vert"),
                                   Files::Local("res/shaders/white_bloom.frag"));

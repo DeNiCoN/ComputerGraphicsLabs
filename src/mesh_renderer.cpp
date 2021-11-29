@@ -53,8 +53,17 @@ Texture::Ptr TextureManager::NewFromFile(const std::string &name,
         spdlog::error("Failed to load texture file {}", filename.c_str());
         throw std::runtime_error("");
     }
+    auto result = NewFromPixels(name, pixels, texWidth, texHeight);
 
-    void* pixel_ptr = pixels;
+    stbi_image_free(pixels);
+    m_textures[name] = result;
+    return result;
+}
+
+Texture::Ptr TextureManager::NewFromPixels(const std::string& name,
+                                           void* pixel_ptr,
+                                           int texWidth, int texHeight)
+{
     VkDeviceSize imageSize = texWidth * texHeight * 4;
 
     //the format R8G8B8A8 matches exactly with the pixels loaded from stb_image lib
@@ -72,7 +81,6 @@ Texture::Ptr TextureManager::NewFromFile(const std::string &name,
     memcpy(data, pixel_ptr, static_cast<size_t>(imageSize));
     vmaUnmapMemory(m_engine.GetVmaAllocator(), stagingBuffer.allocation);
     //we no longer need the loaded data, so we can free the pixels as they are now in the staging buffer
-    stbi_image_free(pixels);
 
     VkExtent3D imageExtent;
     imageExtent.width = static_cast<uint32_t>(texWidth);
@@ -188,7 +196,11 @@ TextureSet::Ptr TextureManager::NewTextureSet(
     Texture::Ptr ao)
 {
     auto result = std::make_shared<TextureSet>();
-    result->diffuse = diffuse;
+    result->albedo = albedo;
+    result->normal = normal;
+    result->specular = specular;
+    result->roughness = roughness;
+    result->ao = ao;
 
     //allocate the descriptor set for single-texture to use on the material
     vk::DescriptorSetAllocateInfo allocInfo;
@@ -199,23 +211,74 @@ TextureSet::Ptr TextureManager::NewTextureSet(
 
     result->descriptor = m_engine.GetDevice().allocateDescriptorSets(allocInfo)[0];
 
-    //write to the descriptor set so that it points to our empire_diffuse texture
-    vk::DescriptorImageInfo imageBufferInfo;
-    imageBufferInfo.sampler = *diffuse->sampler;
-    imageBufferInfo.imageView = *diffuse->imageView;
-    imageBufferInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+    vk::DescriptorImageInfo albedoInfo;
+    if (albedo)
+    {
+        albedoInfo.sampler = *albedo->sampler;
+        albedoInfo.imageView = *albedo->imageView;
+        albedoInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+    } else {
+        albedoInfo.sampler = *m_default_albedo->sampler;
+        albedoInfo.imageView = *m_default_albedo->imageView;
+        albedoInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+    }
 
-    vk::WriteDescriptorSet diffuseWrite;
-    diffuseWrite.dstBinding = 0;
-    diffuseWrite.dstSet = result->descriptor;
-    diffuseWrite.descriptorCount = 1;
-    diffuseWrite.descriptorType = vk::DescriptorType::eCombinedImageSampler;
-    diffuseWrite.pImageInfo = &imageBufferInfo;
+    vk::DescriptorImageInfo normalInfo;
+    if (normal)
+    {
+        normalInfo.sampler = *normal->sampler;
+        normalInfo.imageView = *normal->imageView;
+        normalInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+    } else {
+        normalInfo.sampler = *m_default_normal->sampler;
+        normalInfo.imageView = *m_default_normal->imageView;
+        normalInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+    }
+
+    vk::DescriptorImageInfo roughnessInfo;
+    if (roughness)
+    {
+        roughnessInfo.sampler = *roughness->sampler;
+        roughnessInfo.imageView = *roughness->imageView;
+        roughnessInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+    } else {
+        roughnessInfo.sampler = *m_default_roughness->sampler;
+        roughnessInfo.imageView = *m_default_roughness->imageView;
+        roughnessInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+    }
+
+    vk::DescriptorImageInfo specularInfo;
+    if (specular)
+    {
+        specularInfo.sampler = *specular->sampler;
+        specularInfo.imageView = *specular->imageView;
+        specularInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+    } else {
+        specularInfo.sampler = *m_default_specular->sampler;
+        specularInfo.imageView = *m_default_specular->imageView;
+        specularInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+    }
+
+    vk::DescriptorImageInfo aoInfo;
+    if (ao)
+    {
+        aoInfo.sampler = *ao->sampler;
+        aoInfo.imageView = *ao->imageView;
+        aoInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+    } else {
+        aoInfo.sampler = *m_default_ao->sampler;
+        aoInfo.imageView = *m_default_ao->imageView;
+        aoInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+    }
 
     auto writes = {
-        init::ImageWriteDescriptorSet(0, result->descriptor, imageBufferInfo)
+        init::ImageWriteDescriptorSet(0, result->descriptor, albedoInfo),
+        init::ImageWriteDescriptorSet(1, result->descriptor, normalInfo),
+        init::ImageWriteDescriptorSet(2, result->descriptor, specularInfo),
+        init::ImageWriteDescriptorSet(3, result->descriptor, roughnessInfo),
+        init::ImageWriteDescriptorSet(4, result->descriptor, aoInfo)
     };
-    m_engine.GetDevice().updateDescriptorSets(diffuseWrite, nullptr);
+    m_engine.GetDevice().updateDescriptorSets(writes, nullptr);
     return result;
 }
 
@@ -530,4 +593,22 @@ void MeshRenderer::WriteCmdBuffer(vk::CommandBuffer cmd, Engine& engine)
 
         cmd.drawIndexed(drawData.mesh->indices.size(), 1, 0, 0, 0);
     }
+}
+
+void TextureManager::Init()
+{
+    uint32_t albedo_pixels[] {glm::packSnorm4x8({1, 0, 1, 1})};
+    m_default_albedo = NewFromPixels("default_albedo", albedo_pixels, 1, 1);
+
+    uint32_t normal_pixels[] {glm::packSnorm4x8({0, 0, 1, 1})};
+    m_default_normal = NewFromPixels("default_normal", normal_pixels, 1, 1);
+
+    uint32_t specular_pixels[] {glm::packSnorm4x8({0.5, 0.5, 0.5, 0.5})};
+    m_default_specular = NewFromPixels("default_specular", specular_pixels, 1, 1);
+
+    uint32_t roughness_pixels[] {glm::packSnorm4x8({0.5, 0.5, 0.5, 0.5})};
+    m_default_roughness = NewFromPixels("default_roughness", roughness_pixels, 1, 1);
+
+    uint32_t ao_pixels[] {glm::packSnorm4x8({1, 1, 1, 1})};
+    m_default_ao = NewFromPixels("default_ao", ao_pixels, 1, 1);
 }
