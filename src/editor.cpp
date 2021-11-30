@@ -240,8 +240,8 @@ void Editor::InitDefaultObjects()
     m_texture_manager.Init();
 
     m_material_manager.FromShaders("Default",
-                                   Files::Local("res/shaders/default.vert"),
-                                   Files::Local("res/shaders/default.frag"));
+                                   Files::Local("res/shaders/pbr.vert"),
+                                   Files::Local("res/shaders/pbr.frag"));
     m_material_manager.FromShaders("Model_UV",
                                    Files::Local("res/shaders/default.vert"),
                                    Files::Local("res/shaders/model_uv.frag"));

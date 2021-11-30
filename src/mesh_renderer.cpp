@@ -4,11 +4,12 @@
 #include <spdlog/spdlog.h>
 #include "shader_compiler.hpp"
 #include <stb_image.h>
+#include <unordered_map>
 
-std::array<vk::VertexInputAttributeDescription, 4>
+std::array<vk::VertexInputAttributeDescription, 5>
 Vertex::AttributeDescriptions()
 {
-    std::array<vk::VertexInputAttributeDescription, 4> attributeDescriptions;
+    std::array<vk::VertexInputAttributeDescription, 5> attributeDescriptions;
     attributeDescriptions[0].binding = 0;
     attributeDescriptions[0].location = 0;
     attributeDescriptions[0].format = vk::Format::eR32G32B32Sfloat;
@@ -28,6 +29,11 @@ Vertex::AttributeDescriptions()
     attributeDescriptions[3].location = 3;
     attributeDescriptions[3].format = vk::Format::eR32G32Sfloat;
     attributeDescriptions[3].offset = offsetof(Vertex, textureCoord);
+
+    attributeDescriptions[4].binding = 0;
+    attributeDescriptions[4].location = 4;
+    attributeDescriptions[4].format = vk::Format::eR32G32B32A32Sfloat;
+    attributeDescriptions[4].offset = offsetof(Vertex, tangent);
 
     return attributeDescriptions;
 
@@ -175,8 +181,8 @@ Texture::Ptr TextureManager::NewFromPixels(const std::string& name,
 
     //create a sampler for the texture
     vk::SamplerCreateInfo samplerInfo;
-    samplerInfo.magFilter = vk::Filter::eNearest;
-    samplerInfo.minFilter = vk::Filter::eNearest;
+    samplerInfo.magFilter = vk::Filter::eLinear;
+    samplerInfo.minFilter = vk::Filter::eLinear;
     samplerInfo.addressModeU = vk::SamplerAddressMode::eRepeat;
     samplerInfo.addressModeV = vk::SamplerAddressMode::eRepeat;
     samplerInfo.addressModeW = vk::SamplerAddressMode::eRepeat;
@@ -299,6 +305,8 @@ Mesh::Ptr MeshManager::NewFromObj(const std::string &name, const std::filesystem
 
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
+    std::unordered_map<Vertex, uint32_t> uniqueVertices;
+
     for (const auto& shape : shapes)
     {
         for (const auto& index : shape.mesh.indices)
@@ -336,9 +344,73 @@ Mesh::Ptr MeshManager::NewFromObj(const std::string &name, const std::filesystem
 
             vertex.color = {1.0f, 1.0f, 1.0f};
 
-            vertices.push_back(vertex);
-            indices.push_back(indices.size());
+            if (!uniqueVertices.count(vertex)) {
+                uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
+                vertices.push_back(vertex);
+            }
+
+            indices.push_back(uniqueVertices[vertex]);
         }
+    }
+
+    std::vector<glm::vec3> tan1(vertices.size());
+    std::ranges::fill(tan1, glm::vec3(0));
+    std::vector<glm::vec3> tan2(vertices.size());
+    std::ranges::fill(tan2, glm::vec3(0));
+
+    for(unsigned int i = 0; i < indices.size(); i += 3)
+    {
+        auto& vertex0 = vertices[indices[i]];
+        auto& vertex1 = vertices[indices[i + 1]];
+        auto& vertex2 = vertices[indices[i + 2]];
+
+        glm::vec3 v1 = vertex0.position;
+        glm::vec3 v2 = vertex1.position;
+        glm::vec3 v3 = vertex2.position;
+
+        glm::vec2 w1 = vertex0.textureCoord;
+        glm::vec2 w2 = vertex1.textureCoord;
+        glm::vec2 w3 = vertex2.textureCoord;
+
+        float x1 = v2.x - v1.x;
+        float x2 = v3.x - v1.x;
+        float y1 = v2.y - v1.y;
+        float y2 = v3.y - v1.y;
+        float z1 = v2.z - v1.z;
+        float z2 = v3.z - v1.z;
+
+        float s1 = w2.x - w1.x;
+        float s2 = w3.x - w1.x;
+        float t1 = w2.y - w1.y;
+        float t2 = w3.y - w1.y;
+
+        float r = 1.0F / (s1 * t2 - s2 * t1);
+        glm::vec3 sdir((t2 * x1 - t1 * x2) * r, (t2 * y1 - t1 * y2) * r,
+                       (t2 * z1 - t1 * z2) * r);
+        glm::vec3 tdir((s1 * x2 - s2 * x1) * r, (s1 * y2 - s2 * y1) * r,
+                       (s1 * z2 - s2 * z1) * r);
+
+        tan1[indices[i]] += sdir;
+        tan1[indices[i + 1]] += sdir;
+        tan1[indices[i + 2]] += sdir;
+
+        tan2[indices[i]] += tdir;
+        tan2[indices[i + 1]] += tdir;
+        tan2[indices[i + 2]] += tdir;
+    }
+
+    for (long a = 0; a < vertices.size(); a++)
+    {
+        const glm::vec3& n = vertices[a].normal;
+        const glm::vec3& t = tan1[a];
+
+        // Gram-Schmidt orthogonalize
+        vertices[a].tangent =
+            glm::vec4(glm::normalize(t - n * glm::dot(n, t)), 1.f);
+
+        // Calculate handedness
+        vertices[a].tangent.w =
+            (glm::dot(glm::cross(n, t), tan2[a]) < 0.0F) ? -1.0F : 1.0F;
     }
 
     return NewFromVertices(name, std::move(vertices), std::move(indices));
@@ -600,7 +672,7 @@ void TextureManager::Init()
     uint32_t albedo_pixels[] {glm::packSnorm4x8({1, 0, 1, 1})};
     m_default_albedo = NewFromPixels("default_albedo", albedo_pixels, 1, 1);
 
-    uint32_t normal_pixels[] {glm::packSnorm4x8({0, 0, 1, 1})};
+    uint32_t normal_pixels[] {glm::packSnorm4x8({0.5, 0.5, 1, 1})};
     m_default_normal = NewFromPixels("default_normal", normal_pixels, 1, 1);
 
     uint32_t specular_pixels[] {glm::packSnorm4x8({0.5, 0.5, 0.5, 0.5})};

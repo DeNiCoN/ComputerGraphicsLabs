@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <glm/glm.hpp>
 #include <ranges>
+#include <glm/gtx/hash.hpp>
 
 struct PushConstants
 {
@@ -17,12 +18,44 @@ struct Vertex
     glm::vec3 normal;
     glm::vec3 color;
     glm::vec2 textureCoord;
+    glm::vec4 tangent;
 
-    static std::array<vk::VertexInputAttributeDescription, 4>
+    static std::array<vk::VertexInputAttributeDescription, 5>
     AttributeDescriptions();
 
     static vk::VertexInputBindingDescription BindingDescription();
+
+    bool operator==(const Vertex& other) const
+    {
+        return position == other.position
+            && normal == other.normal
+            && color == other.color
+            && textureCoord == other.textureCoord
+            && tangent == other.tangent;
+    }
 };
+
+inline void hash_combine(std::size_t& seed) { }
+
+template <typename T, typename... Rest>
+inline void hash_combine(std::size_t& seed, const T& v, Rest... rest) {
+    std::hash<T> hasher;
+    seed ^= hasher(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);
+    hash_combine(seed, rest...);
+}
+
+
+namespace std {
+    template<> struct hash<Vertex> {
+        size_t operator()(Vertex const& vertex) const {
+            std::size_t seed = 31;
+            hash_combine(
+                seed, vertex.position, vertex.normal, vertex.color,
+                vertex.textureCoord, vertex.tangent);
+            return seed;
+                }
+    };
+}
 
 struct Texture
 {

@@ -7,6 +7,6 @@ layout(location = 0) out vec4 colorOut;
 layout(set = 1, binding = 2) uniform sampler2D specular;
 
 void main() {
-    float s = texture(specular, uv).x;
-    colorOut = vec4(s, s, s, 1);
+    vec3 s = texture(specular, uv).xyz;
+    colorOut = vec4(s, 1);
 }
