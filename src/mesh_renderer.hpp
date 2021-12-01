@@ -86,10 +86,12 @@ public:
     void Init();
 
     Texture::Ptr NewFromFile(const std::string& name,
-                             const std::filesystem::path& filename);
+                             const std::filesystem::path& filename,
+                             vk::Format view_format = vk::Format::eR8G8B8A8Srgb);
 
     Texture::Ptr NewFromPixels(const std::string& name, void* pixel_ptr,
-                              int texWidth, int texHeight);
+                               int texWidth, int texHeight,
+                               vk::Format view_format = vk::Format::eR8G8B8A8Srgb);
 
     TextureSet::Ptr NewTextureSet(
         Texture::Ptr albedo,

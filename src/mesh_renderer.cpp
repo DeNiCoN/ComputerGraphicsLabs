@@ -49,7 +49,8 @@ vk::VertexInputBindingDescription Vertex::BindingDescription()
 }
 
 Texture::Ptr TextureManager::NewFromFile(const std::string &name,
-                                         const std::filesystem::path &filename)
+                                         const std::filesystem::path &filename,
+                                         vk::Format view_format)
 {
     int texWidth, texHeight, texChannels;
 
@@ -59,7 +60,7 @@ Texture::Ptr TextureManager::NewFromFile(const std::string &name,
         spdlog::error("Failed to load texture file {}", filename.c_str());
         throw std::runtime_error("");
     }
-    auto result = NewFromPixels(name, pixels, texWidth, texHeight);
+    auto result = NewFromPixels(name, pixels, texWidth, texHeight, view_format);
 
     stbi_image_free(pixels);
     m_textures[name] = result;
@@ -68,12 +69,13 @@ Texture::Ptr TextureManager::NewFromFile(const std::string &name,
 
 Texture::Ptr TextureManager::NewFromPixels(const std::string& name,
                                            void* pixel_ptr,
-                                           int texWidth, int texHeight)
+                                           int texWidth, int texHeight,
+                                           vk::Format view_format)
 {
     VkDeviceSize imageSize = texWidth * texHeight * 4;
 
     //the format R8G8B8A8 matches exactly with the pixels loaded from stb_image lib
-    VkFormat image_format = VK_FORMAT_R8G8B8A8_SRGB;
+    VkFormat image_format = static_cast<VkFormat>(view_format);
 
     //allocate temporary buffer for holding texture data to upload
     AllocatedBuffer stagingBuffer =
@@ -170,7 +172,7 @@ Texture::Ptr TextureManager::NewFromPixels(const std::string& name,
     vk::ImageViewCreateInfo imageViewInfo;
     imageViewInfo.viewType = vk::ImageViewType::e2D;
     imageViewInfo.image = result->image.image;
-    imageViewInfo.format = vk::Format::eR8G8B8A8Srgb;
+    imageViewInfo.format = view_format;
     imageViewInfo.subresourceRange.baseMipLevel = 0;
     imageViewInfo.subresourceRange.levelCount = 1;
     imageViewInfo.subresourceRange.baseArrayLayer = 0;
@@ -681,10 +683,10 @@ void MeshRenderer::WriteCmdBuffer(vk::CommandBuffer cmd, Engine& engine)
 void TextureManager::Init()
 {
     uint32_t albedo_pixels[] {glm::packSnorm4x8({1, 0, 1, 1})};
-    m_default_albedo = NewFromPixels("default_albedo", albedo_pixels, 1, 1);
+    m_default_albedo = NewFromPixels("default_albedo", albedo_pixels, 1, 1, vk::Format::eR8G8B8A8Srgb);
 
     uint32_t normal_pixels[] {glm::packSnorm4x8({0.5, 0.5, 1, 1})};
-    m_default_normal = NewFromPixels("default_normal", normal_pixels, 1, 1);
+    m_default_normal = NewFromPixels("default_normal", normal_pixels, 1, 1, vk::Format::eR8G8B8A8Snorm);
 
     uint32_t specular_pixels[] {glm::packSnorm4x8({0.5, 0.5, 0.5, 0.5})};
     m_default_specular = NewFromPixels("default_specular", specular_pixels, 1, 1);

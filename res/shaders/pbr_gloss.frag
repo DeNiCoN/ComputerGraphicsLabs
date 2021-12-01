@@ -108,7 +108,7 @@ void main()
 
     vec3 camPos = scene.viewPos;
     vec3 albedo     = pow(texture(albedoMap, TexCoords).rgb, vec3(2.2));
-    float roughness = texture(roughnessMap, TexCoords).r;
+    float roughness = 1.f - texture(roughnessMap, TexCoords).r;
     float ao        = texture(aoMap, TexCoords).r;
 
     vec3 N = getNormalFromMap();

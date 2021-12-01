@@ -29,7 +29,7 @@ void main()
     vec3 hdrColor = SRGBtoLINEAR(texture(uScene, vTexCoords)).rgb;
     vec3 bloomColor = SRGBtoLINEAR(texture(uBloomBlur, vTexCoords)).rgb;
     //Intensity
-    bloomColor *= 1;
+    bloomColor *= 0.5;
     hdrColor += bloomColor; // Additive blending
 
     vec3 result = hdrColor; // Tone mapping

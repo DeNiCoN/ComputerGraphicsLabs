@@ -239,9 +239,12 @@ void Editor::InitDefaultObjects()
 {
     m_texture_manager.Init();
 
-    m_material_manager.FromShaders("Default",
+    m_material_manager.FromShaders("PBR",
                                    Files::Local("res/shaders/pbr.vert"),
                                    Files::Local("res/shaders/pbr.frag"));
+    m_material_manager.FromShaders("PBR_Gloss",
+                                   Files::Local("res/shaders/pbr.vert"),
+                                   Files::Local("res/shaders/pbr_gloss.frag"));
     m_material_manager.FromShaders("Model_UV",
                                    Files::Local("res/shaders/default.vert"),
                                    Files::Local("res/shaders/model_uv.frag"));
@@ -276,47 +279,47 @@ void Editor::InitDefaultObjects()
     m_mesh_manager.NewFromObj("lemon", Files::Local("res/models/fr_avalonLemon.obj"));
     m_mesh_manager.NewFromObj("sun", Files::Local("res/models/sun.obj"));
 
-    m_texture_manager.NewFromFile("paper_ao", Files::Local("res/textures/br_tpaperRoll_ao.jpg"));
-    m_texture_manager.NewFromFile("paper_nrm", Files::Local("res/textures/br_tpaperRoll_nrm.jpg"));
-    m_texture_manager.NewFromFile("paper_rough", Files::Local("res/textures/br_tpaperRoll_rough.jpg"));
+    m_texture_manager.NewFromFile("paper_ao", Files::Local("res/textures/br_tpaperRoll_ao.jpg"), vk::Format::eR8G8B8A8Unorm);
+    m_texture_manager.NewFromFile("paper_nrm", Files::Local("res/textures/br_tpaperRoll_nrm.jpg"), vk::Format::eR8G8B8A8Unorm);
+    m_texture_manager.NewFromFile("paper_rough", Files::Local("res/textures/br_tpaperRoll_rough.jpg"), vk::Format::eR8G8B8A8Unorm);
     m_texture_manager.NewFromFile("paper_specular", Files::Local("res/textures/br_tpaperRoll_specular.jpg"));
     m_texture_manager.NewFromFile("paper_albedo", Files::Local("res/textures/br_tpaperRoll_albedo.jpg"));
     m_texture_manager.NewFromFile("paper_scattering", Files::Local("res/textures/br_tpaperRoll_scattering.jpg"));
 
-    m_texture_manager.NewFromFile("flintlock_ao", Files::Local("res/textures/fa_flintlockPistol_ao.jpg"));
-    m_texture_manager.NewFromFile("flintlock_nrm", Files::Local("res/textures/fa_flintlockPistol_nrm.jpg"));
-    m_texture_manager.NewFromFile("flintlock_rough", Files::Local("res/textures/fa_flintlockPistol_rough.jpg"));
+    m_texture_manager.NewFromFile("flintlock_ao", Files::Local("res/textures/fa_flintlockPistol_ao.jpg"), vk::Format::eR8G8B8A8Unorm);
+    m_texture_manager.NewFromFile("flintlock_nrm", Files::Local("res/textures/fa_flintlockPistol_nrm.jpg"), vk::Format::eR8G8B8A8Unorm);
+    m_texture_manager.NewFromFile("flintlock_rough", Files::Local("res/textures/fa_flintlockPistol_rough.jpg"), vk::Format::eR8G8B8A8Unorm);
     m_texture_manager.NewFromFile("flintlock_specular", Files::Local("res/textures/fa_flintlockPistol_specular.jpg"));
     m_texture_manager.NewFromFile("flintlock_albedo", Files::Local("res/textures/fa_flintlockPistol_albedo.jpg"));
 
-    m_texture_manager.NewFromFile("lemon_nrm", Files::Local("res/textures/fr_avalonLemon_nrm.jpg"));
-    m_texture_manager.NewFromFile("lemon_rough", Files::Local("res/textures/fr_avalonLemon_rough.jpg"));
+    m_texture_manager.NewFromFile("lemon_nrm", Files::Local("res/textures/fr_avalonLemon_nrm.jpg"), vk::Format::eR8G8B8A8Unorm);
+    m_texture_manager.NewFromFile("lemon_rough", Files::Local("res/textures/fr_avalonLemon_rough.jpg"), vk::Format::eR8G8B8A8Unorm);
     m_texture_manager.NewFromFile("lemon_specular", Files::Local("res/textures/fr_avalonLemon_specular.jpg"));
     m_texture_manager.NewFromFile("lemon_albedo", Files::Local("res/textures/fr_avalonLemon_albedo.jpg"));
 
-    m_texture_manager.NewFromFile("orange_nrm", Files::Local("res/textures/fr_caraOrange_nrm.jpg"));
-    m_texture_manager.NewFromFile("orange_rough", Files::Local("res/textures/fr_caraOrange_rough.jpg"));
+    m_texture_manager.NewFromFile("orange_nrm", Files::Local("res/textures/fr_caraOrange_nrm.jpg"), vk::Format::eR8G8B8A8Unorm);
+    m_texture_manager.NewFromFile("orange_rough", Files::Local("res/textures/fr_caraOrange_rough.jpg"), vk::Format::eR8G8B8A8Unorm);
     m_texture_manager.NewFromFile("orange_specular", Files::Local("res/textures/fr_caraOrange_specular.jpg"));
     m_texture_manager.NewFromFile("orange_albedo", Files::Local("res/textures/fr_caraOrange_albedo.jpg"));
-    m_texture_manager.NewFromFile("orange_scattering", Files::Local("res/textures/fr_caraOrange_scattering.jpg"));
+    m_texture_manager.NewFromFile("orange_scattering", Files::Local("res/textures/fr_caraOrange_scattering.jpg"), vk::Format::eR8G8B8A8Unorm);
 
     m_texture_manager.NewFromFile("pot_specular", Files::Local("res/textures/pot_specular.jpg"));
-    m_texture_manager.NewFromFile("pot_normal", Files::Local("res/textures/pot_normal.jpg"));
-    m_texture_manager.NewFromFile("pot_gloss", Files::Local("res/textures/pot_gloss.jpg"));
+    m_texture_manager.NewFromFile("pot_normal", Files::Local("res/textures/pot_normal.jpg"), vk::Format::eR8G8B8A8Unorm);
+    m_texture_manager.NewFromFile("pot_gloss", Files::Local("res/textures/pot_gloss.jpg"), vk::Format::eR8G8B8A8Unorm);
     m_texture_manager.NewFromFile("pot_albedo", Files::Local("res/textures/pot_albedo.jpg"));
 
     m_texture_manager.NewFromFile("cherry_specular", Files::Local("res/textures/cherry_specular.tga.png"));
-    m_texture_manager.NewFromFile("cherry_normal", Files::Local("res/textures/cherry_normal.tga.png"));
-    m_texture_manager.NewFromFile("cherry_gloss", Files::Local("res/textures/cherry_gloss.tga.png"));
+    m_texture_manager.NewFromFile("cherry_normal", Files::Local("res/textures/cherry_normal.tga.png"), vk::Format::eR8G8B8A8Unorm);
+    m_texture_manager.NewFromFile("cherry_gloss", Files::Local("res/textures/cherry_gloss.tga.png"), vk::Format::eR8G8B8A8Unorm);
     m_texture_manager.NewFromFile("cherry_color", Files::Local("res/textures/cherry_color.tga.png"));
-    m_texture_manager.NewFromFile("cherry_ao", Files::Local("res/textures/cherry_ao.tga.png"));
+    m_texture_manager.NewFromFile("cherry_ao", Files::Local("res/textures/cherry_ao.tga.png"), vk::Format::eR8G8B8A8Unorm);
 
     m_texture_manager.NewFromFile("sun_color", Files::Local("res/textures/sun.jpg"));
 
     auto paper = std::make_shared<MeshObject>(
         m_mesh_renderer,
         m_mesh_manager.Get("paper"),
-        m_material_manager.Get("Default"),
+        m_material_manager.Get("PBR"),
         m_texture_manager.NewTextureSet(
             m_texture_manager.Get("paper_albedo"),
             m_texture_manager.Get("paper_nrm"),
@@ -355,7 +358,7 @@ void Editor::InitDefaultObjects()
     auto flintlock = std::make_shared<MeshObject>(
         m_mesh_renderer,
         m_mesh_manager.Get("flintlock"),
-        m_material_manager.Get("Default"),
+        m_material_manager.Get("PBR"),
         m_texture_manager.NewTextureSet(
             m_texture_manager.Get("flintlock_albedo"),
             m_texture_manager.Get("flintlock_nrm"),
@@ -378,7 +381,7 @@ void Editor::InitDefaultObjects()
     auto lemon = std::make_shared<MeshObject>(
         m_mesh_renderer,
         m_mesh_manager.Get("lemon"),
-        m_material_manager.Get("Default"),
+        m_material_manager.Get("PBR"),
         m_texture_manager.NewTextureSet(
             m_texture_manager.Get("lemon_albedo"),
             m_texture_manager.Get("lemon_nrm"),
@@ -401,7 +404,7 @@ void Editor::InitDefaultObjects()
     auto orange = std::make_shared<MeshObject>(
         m_mesh_renderer,
         m_mesh_manager.Get("orange"),
-        m_material_manager.Get("Default"),
+        m_material_manager.Get("PBR"),
         m_texture_manager.NewTextureSet(
             m_texture_manager.Get("orange_albedo"),
             m_texture_manager.Get("orange_nrm"),
@@ -424,7 +427,7 @@ void Editor::InitDefaultObjects()
     auto pot = std::make_shared<MeshObject>(
         m_mesh_renderer,
         m_mesh_manager.Get("pot"),
-        m_material_manager.Get("Default"),
+        m_material_manager.Get("PBR_Gloss"),
         m_texture_manager.NewTextureSet(
             m_texture_manager.Get("pot_albedo"),
             m_texture_manager.Get("pot_normal"),
@@ -448,7 +451,7 @@ void Editor::InitDefaultObjects()
     auto cherry = std::make_shared<MeshObject>(
         m_mesh_renderer,
         m_mesh_manager.Get("cherry"),
-        m_material_manager.Get("Default"),
+        m_material_manager.Get("PBR_Gloss"),
         m_texture_manager.NewTextureSet(
             m_texture_manager.Get("cherry_color"),
             m_texture_manager.Get("cherry_normal"),
