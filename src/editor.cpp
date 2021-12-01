@@ -224,7 +224,7 @@ void Editor::InitImGui()
     init_info.ImageCount = m_engine.GetImageCount();
     init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 
-    ImGui_ImplVulkan_Init(&init_info, m_engine.GetRenderPass());
+    ImGui_ImplVulkan_Init(&init_info, m_engine.GetPresentRenderPass());
 
     //execute a gpu command to upload imgui font textures
     m_engine.ImmediateSubmit([&](VkCommandBuffer cmd) {
@@ -495,6 +495,7 @@ void Editor::ImGuiFrame()
             {
                 entry.object->Recreate(m_engine);
             }
+            m_engine.CreateBloomPipelines();
         }
         catch(const vk::Error& e)
         {

@@ -3,7 +3,7 @@
 
 namespace init
 {
-    vk::WriteDescriptorSet ImageWriteDescriptorSet(
+    inline vk::WriteDescriptorSet ImageWriteDescriptorSet(
         int binding, vk::DescriptorSet dst,
         vk::DescriptorImageInfo& imageInfo)
     {

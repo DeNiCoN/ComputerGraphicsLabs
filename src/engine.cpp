@@ -17,6 +17,7 @@
 #include "bindings/imgui_impl_vulkan.h"
 #include <Tracy.hpp>
 #include <TracyVulkan.hpp>
+#include "initializers.hpp"
 
 const std::vector<const char*> Engine::s_validationLayers = {
     "VK_LAYER_KHRONOS_validation"
@@ -376,6 +377,7 @@ void Engine::CreateSwapChain()
     SwapChainSupportDetails swapChainSupport = QuerySwapChainSupport(m_physicalDevice, *m_surface);
 
     auto surfaceFormat = ChooseSwapSurfaceFormat(swapChainSupport.formats);
+    m_swapChainFormat = surfaceFormat.format;
     auto presentMode = ChooseSwapPresentMode(swapChainSupport.presentModes);
     auto extent = ChooseSwapExtent(swapChainSupport.capabilities, m_window);
 
@@ -421,12 +423,41 @@ void Engine::CreateSwapChain()
 
 void Engine::CreateImageViews()
 {
+    m_sceneImages.resize(m_swapChainImages.size());
+
+    for (int i = 0; i < m_sceneImages.size(); i++)
+    {
+        m_sceneImages[i] = CreateImage(
+            m_swapChainExtent.width, m_swapChainExtent.height,
+            m_swapChainFormat, vk::ImageUsageFlagBits::eColorAttachment |
+            vk::ImageUsageFlagBits::eSampled,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+    }
+
     m_swapChainImageViews.resize(m_swapChainImages.size());
 
     for (size_t i = 0; i < m_swapChainImages.size(); i++)
     {
         m_swapChainImageViews[i] =
             CreateImageView(m_swapChainImages[i],
+                            m_swapChainImageFormat,
+                            vk::ImageAspectFlagBits::eColor);
+    }
+
+    m_sceneImageViews.resize(m_sceneImages.size());
+    for (size_t i = 0; i < m_sceneImageViews.size(); i++)
+    {
+        m_sceneImageViews[i] =
+            CreateImageView(m_sceneImages[i].image,
+                            m_swapChainImageFormat,
+                            vk::ImageAspectFlagBits::eColor);
+    }
+
+    m_bloomImageViews.resize(m_bloomImages.size());
+    for (size_t i = 0; i < m_bloomImageViews.size(); i++)
+    {
+        m_bloomImageViews[i] =
+            CreateImageView(m_bloomImages[i].image,
                             m_swapChainImageFormat,
                             vk::ImageAspectFlagBits::eColor);
     }
@@ -452,7 +483,17 @@ void Engine::CreateRenderPass()
     colorAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
     colorAttachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
     colorAttachment.initialLayout = vk::ImageLayout::eUndefined;
-    colorAttachment.finalLayout = vk::ImageLayout::ePresentSrcKHR;
+    colorAttachment.finalLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+
+    vk::AttachmentDescription bloomAttachment;
+    bloomAttachment.format = m_swapChainImageFormat;
+    bloomAttachment.samples = vk::SampleCountFlagBits::e1;
+    bloomAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+    bloomAttachment.storeOp = vk::AttachmentStoreOp::eStore;
+    bloomAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
+    bloomAttachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+    bloomAttachment.initialLayout = vk::ImageLayout::eUndefined;
+    bloomAttachment.finalLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
 
     vk::AttachmentDescription depthAttachment;
     depthAttachment.format = FindDepthFormat();
@@ -468,42 +509,278 @@ void Engine::CreateRenderPass()
     colorAttachmentRef.attachment = 0;
     colorAttachmentRef.layout = vk::ImageLayout::eColorAttachmentOptimal;
 
+    vk::AttachmentReference bloomAttachmentRef;
+    bloomAttachmentRef.attachment = 1;
+    bloomAttachmentRef.layout = vk::ImageLayout::eColorAttachmentOptimal;
+
     vk::AttachmentReference depthAttachmentRef;
-    depthAttachmentRef.attachment = 1;
+    depthAttachmentRef.attachment = 2;
     depthAttachmentRef.layout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
 
+    auto colorAttachments = {colorAttachmentRef, bloomAttachmentRef};
     vk::SubpassDescription subpass;
     subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
-    subpass.setColorAttachments(colorAttachmentRef);
+    subpass.setColorAttachments(colorAttachments);
     subpass.pDepthStencilAttachment = &depthAttachmentRef;
+
+    std::array<vk::SubpassDependency, 2> dependencies;
+    dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependencies[0].dstSubpass = 0;
+    dependencies[0].srcStageMask =
+        vk::PipelineStageFlagBits::eColorAttachmentOutput |
+        vk::PipelineStageFlagBits::eEarlyFragmentTests;
+    dependencies[0].srcAccessMask = vk::AccessFlagBits::eNoneKHR;
+    dependencies[0].dstStageMask =
+        vk::PipelineStageFlagBits::eColorAttachmentOutput |
+        vk::PipelineStageFlagBits::eEarlyFragmentTests;
+    dependencies[0].dstAccessMask =
+        vk::AccessFlagBits::eColorAttachmentWrite |
+        vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+
+    dependencies[1].srcSubpass = 0;
+    dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+    dependencies[1].srcStageMask =
+        vk::PipelineStageFlagBits::eColorAttachmentOutput |
+        vk::PipelineStageFlagBits::eEarlyFragmentTests;
+    dependencies[1].srcAccessMask = vk::AccessFlagBits::eColorAttachmentRead;
+    dependencies[1].dstStageMask = vk::PipelineStageFlagBits::eFragmentShader;
+    dependencies[1].dstAccessMask = vk::AccessFlagBits::eShaderRead;
+
+    std::array attachments {colorAttachment, bloomAttachment, depthAttachment};
+
+    vk::RenderPassCreateInfo createInfo;
+    createInfo.setAttachments(attachments);
+    createInfo.setSubpasses(subpass);
+    createInfo.setDependencies(dependencies);
+
+    m_renderPass = m_device->createRenderPassUnique(createInfo);
+}
+
+void Engine::CreateAdditiveBlendingRenderPass()
+{
+    vk::AttachmentDescription colorAttachment;
+    colorAttachment.format = m_swapChainImageFormat;
+    colorAttachment.samples = vk::SampleCountFlagBits::e1;
+    colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+    colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;
+    colorAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
+    colorAttachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+    colorAttachment.initialLayout = vk::ImageLayout::eUndefined;
+    colorAttachment.finalLayout = vk::ImageLayout::ePresentSrcKHR;
+
+    vk::AttachmentReference colorAttachmentRef;
+    colorAttachmentRef.attachment = 0;
+    colorAttachmentRef.layout = vk::ImageLayout::eColorAttachmentOptimal;
+
+    auto colorAttachments = {colorAttachmentRef};
+    vk::SubpassDescription subpass;
+    subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
+    subpass.setColorAttachments(colorAttachments);
 
     vk::SubpassDependency dependency;
     dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
     dependency.dstSubpass = 0;
     dependency.srcStageMask =
-        vk::PipelineStageFlagBits::eColorAttachmentOutput |
-        vk::PipelineStageFlagBits::eEarlyFragmentTests;
-    dependency.srcAccessMask = vk::AccessFlagBits::eNoneKHR;
+        vk::PipelineStageFlagBits::eColorAttachmentOutput;
+    dependency.srcAccessMask = vk::AccessFlagBits::eColorAttachmentRead;
     dependency.dstStageMask =
-        vk::PipelineStageFlagBits::eColorAttachmentOutput |
-        vk::PipelineStageFlagBits::eEarlyFragmentTests;
+        vk::PipelineStageFlagBits::eColorAttachmentOutput;
     dependency.dstAccessMask =
-        vk::AccessFlagBits::eColorAttachmentWrite |
-        vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+        vk::AccessFlagBits::eColorAttachmentWrite;
 
-    std::array attachments {colorAttachment, depthAttachment};
+    std::array attachments {colorAttachment};
 
     vk::RenderPassCreateInfo createInfo;
     createInfo.setAttachments(attachments);
     createInfo.setSubpasses(subpass);
     createInfo.setDependencies(dependency);
 
-    m_renderPass = m_device->createRenderPassUnique(createInfo);
+    m_additivePass = m_device->createRenderPassUnique(createInfo);
+}
+
+void Engine::CreateBloomRenderPasses()
+{
+    vk::AttachmentDescription colorAttachment;
+    colorAttachment.format = m_swapChainImageFormat;
+    colorAttachment.samples = vk::SampleCountFlagBits::e1;
+    colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+    colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;
+    colorAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
+    colorAttachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+    colorAttachment.initialLayout = vk::ImageLayout::eUndefined;
+    colorAttachment.finalLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+
+    vk::AttachmentReference colorAttachmentRef;
+    colorAttachmentRef.attachment = 0;
+    colorAttachmentRef.layout = vk::ImageLayout::eColorAttachmentOptimal;
+
+    auto colorAttachments = {colorAttachmentRef};
+    vk::SubpassDescription subpass;
+    subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
+    subpass.setColorAttachments(colorAttachments);
+
+    std::array<vk::SubpassDependency, 2> dependencies;
+    dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependencies[0].dstSubpass = 0;
+    dependencies[0].srcStageMask =
+        vk::PipelineStageFlagBits::eColorAttachmentOutput;
+    dependencies[0].srcAccessMask = vk::AccessFlagBits::eColorAttachmentRead;
+    dependencies[0].dstStageMask =
+        vk::PipelineStageFlagBits::eColorAttachmentOutput;
+    dependencies[0].dstAccessMask =
+        vk::AccessFlagBits::eColorAttachmentWrite;
+
+    dependencies[1].srcSubpass = 0;
+    dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+    dependencies[1].srcStageMask =
+        vk::PipelineStageFlagBits::eColorAttachmentOutput;
+    dependencies[1].srcAccessMask = vk::AccessFlagBits::eColorAttachmentRead;
+    dependencies[1].dstStageMask = vk::PipelineStageFlagBits::eFragmentShader;
+    dependencies[1].dstAccessMask = vk::AccessFlagBits::eShaderRead;
+
+    std::array attachments {colorAttachment};
+
+    vk::RenderPassCreateInfo createInfo;
+    createInfo.setAttachments(attachments);
+    createInfo.setSubpasses(subpass);
+    createInfo.setDependencies(dependencies);
+
+    m_verticalBloomRenderPass = m_device->createRenderPassUnique(createInfo);
+    m_horizontalBloomRenderPass = m_device->createRenderPassUnique(createInfo);
+}
+
+void Engine::CreateBloomPipelines()
+{
+    auto vertex = CreateShaderModule(
+        ShaderCompiler::CompileFromFile(
+            Files::Local("res/shaders/blur.vert"),
+            shaderc_shader_kind::shaderc_vertex_shader));
+
+    vk::PipelineLayoutCreateInfo hInfo;
+    hInfo.setSetLayouts(*m_horizontalDescriptorSetLayout);
+    m_horizontalBloomPipelineLayout =
+        m_device->createPipelineLayoutUnique(hInfo);
+
+    m_horizontalBloomPipeline = CreateWholeScreenPipeline(
+        *vertex,
+        *CreateShaderModule(
+            ShaderCompiler::CompileFromFile(
+                Files::Local("res/shaders/horizontal_blur.frag"),
+                shaderc_shader_kind::shaderc_fragment_shader)),
+        *m_horizontalBloomPipelineLayout, *m_horizontalBloomRenderPass,
+        VK_FALSE, 1);
+
+    vk::PipelineLayoutCreateInfo vInfo;
+    vInfo.setSetLayouts(*m_verticalDescriptorSetLayout);
+    m_verticalBloomPipelineLayout = m_device->createPipelineLayoutUnique(vInfo);
+
+    m_verticalBloomPipeline = CreateWholeScreenPipeline(
+        *vertex,
+        *CreateShaderModule(
+            ShaderCompiler::CompileFromFile(
+                Files::Local("res/shaders/vertical_blur.frag"),
+                shaderc_shader_kind::shaderc_fragment_shader)),
+        *m_verticalBloomPipelineLayout, *m_verticalBloomRenderPass,
+        VK_FALSE, 1);
+
+    vk::PipelineLayoutCreateInfo aInfo;
+    aInfo.setSetLayouts(*m_additiveDescriptorSetLayout);
+    m_additivePipelineLayout = m_device->createPipelineLayoutUnique(aInfo);
+
+    m_additivePipeline = CreateWholeScreenPipeline(
+        *vertex,
+        *CreateShaderModule(
+            ShaderCompiler::CompileFromFile(
+                Files::Local("res/shaders/additive_blend.frag"),
+                shaderc_shader_kind::shaderc_fragment_shader)),
+        *m_additivePipelineLayout, *m_additivePass,
+        VK_FALSE, 1);
+}
+
+void Engine::CreateBloomDescriptorSets()
+{
+    m_horizontalBloomDescriptorSet.resize(m_horizontalBloomImages.size());
+    for (int i = 0; i < m_horizontalBloomDescriptorSet.size(); i++)
+    {
+        vk::DescriptorSetAllocateInfo allocInfo;
+        allocInfo.descriptorPool = *m_bloomDescriptorPool;
+        allocInfo.descriptorSetCount = 1;
+        auto layout = *m_horizontalDescriptorSetLayout;
+        allocInfo.setSetLayouts(layout);
+
+        m_horizontalBloomDescriptorSet[i] = m_device->allocateDescriptorSets(allocInfo)[0];
+
+        vk::DescriptorImageInfo imageInfo;
+        imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+        imageInfo.imageView = *m_bloomImageViews[i];
+        imageInfo.sampler = *m_bloomSampler;
+
+        auto writes = {
+            init::ImageWriteDescriptorSet(0, m_horizontalBloomDescriptorSet[i], imageInfo)
+        };
+
+        m_device->updateDescriptorSets(writes, nullptr);
+    }
+
+    m_verticalBloomDescriptorSet.resize(m_bloomImages.size());
+    for (int i = 0; i < m_verticalBloomDescriptorSet.size(); i++)
+    {
+        vk::DescriptorSetAllocateInfo allocInfo;
+        allocInfo.descriptorPool = *m_bloomDescriptorPool;
+        allocInfo.descriptorSetCount = 1;
+        auto layout = *m_verticalDescriptorSetLayout;
+        allocInfo.setSetLayouts(layout);
+
+        m_verticalBloomDescriptorSet[i] = m_device->allocateDescriptorSets(allocInfo)[0];
+
+        vk::DescriptorImageInfo imageInfo;
+        imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+        imageInfo.imageView = *m_horizontalBloomImageViews[i];
+        imageInfo.sampler = *m_bloomSampler;
+
+        auto writes = {
+            init::ImageWriteDescriptorSet(0, m_verticalBloomDescriptorSet[i], imageInfo)
+        };
+
+        m_device->updateDescriptorSets(writes, nullptr);
+    }
+
+    m_additiveDescriptorSet.resize(m_bloomImages.size());
+    for (int i = 0; i < m_additiveDescriptorSet.size(); i++)
+    {
+        vk::DescriptorSetAllocateInfo allocInfo;
+        allocInfo.descriptorPool = *m_bloomDescriptorPool;
+        allocInfo.descriptorSetCount = 1;
+        auto layout = *m_additiveDescriptorSetLayout;
+        allocInfo.setSetLayouts(layout);
+
+        m_additiveDescriptorSet[i] = m_device->allocateDescriptorSets(allocInfo)[0];
+
+        vk::DescriptorImageInfo imageInfo;
+        imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+        imageInfo.imageView = *m_sceneImageViews[i];
+        imageInfo.sampler = *m_bloomSampler;
+
+        vk::DescriptorImageInfo bloomInfo;
+        bloomInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+        bloomInfo.imageView = *m_bloomImageViews[i];
+        bloomInfo.sampler = *m_bloomSampler;
+
+        auto writes = {
+            init::ImageWriteDescriptorSet(0, m_additiveDescriptorSet[i], imageInfo),
+            init::ImageWriteDescriptorSet(1, m_additiveDescriptorSet[i], bloomInfo)
+        };
+
+        m_device->updateDescriptorSets(writes, nullptr);
+    }
 }
 
 vk::UniquePipeline Engine::CreateWholeScreenPipeline(vk::ShaderModule vertexModule,
                                                      vk::ShaderModule fragmentModule,
-                                                     vk::PipelineLayout pipelineLayout)
+                                                     vk::PipelineLayout pipelineLayout,
+                                                     vk::RenderPass renderPass,
+                                                     VkBool32 blendEnable,
+                                                     int colorAspectsCount)
 {
     vk::PipelineShaderStageCreateInfo vertCreateInfo;
     vertCreateInfo.stage = vk::ShaderStageFlagBits::eVertex;
@@ -550,7 +827,7 @@ vk::UniquePipeline Engine::CreateWholeScreenPipeline(vk::ShaderModule vertexModu
         vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
         vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
 
-    colorBlendAttachment.blendEnable = VK_TRUE;
+    colorBlendAttachment.blendEnable = blendEnable;
     colorBlendAttachment.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
     colorBlendAttachment.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
     colorBlendAttachment.colorBlendOp = vk::BlendOp::eAdd;
@@ -558,10 +835,10 @@ vk::UniquePipeline Engine::CreateWholeScreenPipeline(vk::ShaderModule vertexModu
     colorBlendAttachment.dstAlphaBlendFactor = vk::BlendFactor::eZero;
     colorBlendAttachment.alphaBlendOp = vk::BlendOp::eAdd;
 
+    std::vector<vk::PipelineColorBlendAttachmentState> blendAttachments(colorAspectsCount, colorBlendAttachment);
     vk::PipelineColorBlendStateCreateInfo colorBlendingInfo;
     colorBlendingInfo.logicOpEnable = VK_FALSE;
-    colorBlendingInfo.attachmentCount = 1;
-    colorBlendingInfo.pAttachments = &colorBlendAttachment;
+    colorBlendingInfo.setAttachments(blendAttachments);
 
     vk::PipelineDepthStencilStateCreateInfo depthStencil;
     depthStencil.depthTestEnable = VK_TRUE;
@@ -582,7 +859,7 @@ vk::UniquePipeline Engine::CreateWholeScreenPipeline(vk::ShaderModule vertexModu
     pipelineInfo.pColorBlendState = &colorBlendingInfo;
     pipelineInfo.pDepthStencilState = &depthStencil;
     pipelineInfo.layout = pipelineLayout;
-    pipelineInfo.renderPass = *m_renderPass;
+    pipelineInfo.renderPass = renderPass;
     pipelineInfo.subpass = 0;
 
     return m_device->createGraphicsPipelineUnique(VK_NULL_HANDLE, pipelineInfo).value;
@@ -597,6 +874,25 @@ void Engine::CreateFramebuffers()
     {
         std::array attachments {
             m_swapChainImageViews[i].get(),
+        };
+
+        vk::FramebufferCreateInfo createInfo;
+        createInfo.renderPass = *m_additivePass;
+        createInfo.setAttachments(attachments);
+        createInfo.layers = 1;
+        createInfo.width = m_swapChainExtent.width;
+        createInfo.height = m_swapChainExtent.height;
+
+        m_swapChainFramebuffers[i] = m_device->createFramebufferUnique(createInfo);
+    }
+
+    m_sceneFramebuffers.resize(m_sceneImages.size());
+
+    for (int i = 0; i < m_sceneFramebuffers.size(); i++)
+    {
+        std::array attachments {
+            m_sceneImageViews[i].get(),
+            m_bloomImageViews[i].get(),
             m_depthImageView.get()
         };
 
@@ -607,7 +903,78 @@ void Engine::CreateFramebuffers()
         createInfo.width = m_swapChainExtent.width;
         createInfo.height = m_swapChainExtent.height;
 
-        m_swapChainFramebuffers[i] = m_device->createFramebufferUnique(createInfo);
+        m_sceneFramebuffers[i] = m_device->createFramebufferUnique(createInfo);
+    }
+}
+
+void Engine::CreateBloomFramebuffers()
+{
+    vk::SamplerCreateInfo samplerInfo;
+    samplerInfo.magFilter = vk::Filter::eLinear;
+    samplerInfo.minFilter = vk::Filter::eLinear;
+    samplerInfo.addressModeU = vk::SamplerAddressMode::eRepeat;
+    samplerInfo.addressModeV = vk::SamplerAddressMode::eRepeat;
+    samplerInfo.addressModeW = vk::SamplerAddressMode::eRepeat;
+    m_bloomSampler = m_device->createSamplerUnique(samplerInfo);
+
+    m_horizontalBloomImages.resize(m_sceneImages.size());
+    m_horizontalBloomImageViews.resize(m_sceneImages.size());
+    m_horizontalBloomFramebuffers.resize(m_sceneImages.size());
+    for (int i = 0; i < m_horizontalBloomImages.size(); i++)
+    {
+        m_horizontalBloomImages[i] = CreateImage(
+            m_swapChainExtent.width, m_swapChainExtent.height,
+            m_swapChainFormat, vk::ImageUsageFlagBits::eColorAttachment |
+            vk::ImageUsageFlagBits::eSampled,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+
+        m_horizontalBloomImageViews[i] = CreateImageView(
+            m_horizontalBloomImages[i].image, m_swapChainFormat,
+            vk::ImageAspectFlagBits::eColor);
+
+        std::array attachments {
+            *m_horizontalBloomImageViews[i]
+        };
+
+        vk::FramebufferCreateInfo createInfo;
+        createInfo.renderPass = *m_horizontalBloomRenderPass;
+        createInfo.setAttachments(attachments);
+        createInfo.layers = 1;
+        createInfo.width = m_swapChainExtent.width;
+        createInfo.height = m_swapChainExtent.height;
+
+        m_horizontalBloomFramebuffers[i] = m_device->createFramebufferUnique(createInfo);
+    }
+
+
+
+    m_bloomImages.resize(m_sceneImages.size());
+    m_bloomImageViews.resize(m_sceneImages.size());
+    m_verticalBloomFramebuffers.resize(m_sceneImages.size());
+    for (int i = 0; i < m_bloomImages.size(); i++)
+    {
+        m_bloomImages[i] = CreateImage(
+            m_swapChainExtent.width, m_swapChainExtent.height,
+            m_swapChainFormat, vk::ImageUsageFlagBits::eColorAttachment |
+            vk::ImageUsageFlagBits::eSampled,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+
+        m_bloomImageViews[i] = CreateImageView(
+            m_bloomImages[i].image, m_swapChainFormat,
+            vk::ImageAspectFlagBits::eColor);
+
+        std::array attachments {
+            *m_bloomImageViews[i]
+        };
+
+        vk::FramebufferCreateInfo createInfo;
+        createInfo.renderPass = *m_verticalBloomRenderPass;
+        createInfo.setAttachments(attachments);
+        createInfo.layers = 1;
+        createInfo.width = m_swapChainExtent.width;
+        createInfo.height = m_swapChainExtent.height;
+
+        m_verticalBloomFramebuffers[i] = m_device->createFramebufferUnique(createInfo);
     }
 }
 
@@ -786,6 +1153,36 @@ void Engine::CreateTextureSetLayout()
     m_textureSetLayout = m_device->createDescriptorSetLayoutUnique(layoutInfo);
 }
 
+void Engine::CreateBloomDescriptorSetLayouts()
+{
+    vk::DescriptorSetLayoutBinding inputImage;
+    inputImage.binding = 0;
+    inputImage.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    inputImage.descriptorCount = 1;
+    inputImage.stageFlags = vk::ShaderStageFlagBits::eFragment;
+
+    auto bindings = {inputImage};
+
+    vk::DescriptorSetLayoutCreateInfo horizontalLayoutInfo;
+    horizontalLayoutInfo.setBindings(bindings);
+    m_horizontalDescriptorSetLayout = m_device->createDescriptorSetLayoutUnique(horizontalLayoutInfo);
+
+    vk::DescriptorSetLayoutCreateInfo verticalLayoutInfo;
+    verticalLayoutInfo.setBindings(bindings);
+    m_verticalDescriptorSetLayout = m_device->createDescriptorSetLayoutUnique(verticalLayoutInfo);
+
+    vk::DescriptorSetLayoutBinding otherInputImage;
+    otherInputImage.binding = 1;
+    otherInputImage.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    otherInputImage.descriptorCount = 1;
+    otherInputImage.stageFlags = vk::ShaderStageFlagBits::eFragment;
+    auto additiveBindings = {inputImage, otherInputImage};
+
+    vk::DescriptorSetLayoutCreateInfo additiveLayoutInfo;
+    additiveLayoutInfo.setBindings(additiveBindings);
+    m_additiveDescriptorSetLayout = m_device->createDescriptorSetLayoutUnique(additiveLayoutInfo);
+}
+
 void Engine::CreateUniformBuffers()
 {
     for (auto& frame : m_frames)
@@ -808,6 +1205,22 @@ void Engine::CreateDescriptorPool()
 
     poolInfo.maxSets = 10;
     m_descriptorPool = m_device->createDescriptorPoolUnique(poolInfo);
+}
+
+void Engine::CreateBloomDescriptorPool()
+{
+    std::vector<vk::DescriptorPoolSize> sizes {
+        {vk::DescriptorType::eUniformBuffer, 100},
+        {vk::DescriptorType::eSampledImage, 100},
+        {vk::DescriptorType::eSampler, 100},
+        {vk::DescriptorType::eCombinedImageSampler, 100}
+    };
+
+    vk::DescriptorPoolCreateInfo poolInfo;
+    poolInfo.setPoolSizes(sizes);
+
+    poolInfo.maxSets = 100;
+    m_bloomDescriptorPool = m_device->createDescriptorPoolUnique(poolInfo);
 }
 
 void Engine::CreateDescriptorSets()
@@ -857,9 +1270,18 @@ void Engine::Init(GLFWwindow* window)
     CreateGlobalSetLayout();
     CreateTextureSetLayout();
     CreateDescriptorPool();
+    CreateBloomDescriptorPool();
     CreateDescriptorSets();
     CreateCommandPool();
     CreateDepthResources();
+
+    CreateAdditiveBlendingRenderPass();
+    CreateBloomRenderPasses();
+    CreateBloomFramebuffers();
+    CreateBloomDescriptorSetLayouts();
+    CreateBloomDescriptorSets();
+    CreateBloomPipelines();
+
     CreateFramebuffers();
     CreateCommandBuffers();
     CreateSyncObjects();
@@ -896,11 +1318,8 @@ vk::Format Engine::FindSupportedFormat(const std::vector<vk::Format>& candidates
     throw std::runtime_error("failed to find supported format!");
 }
 
-void Engine::CreateImage(uint32_t width, uint32_t height, vk::Format format,
-                      vk::ImageTiling tiling, vk::ImageUsageFlags usage,
-                      vk::MemoryPropertyFlags properties,
-                      vk::UniqueImage& image,
-                      vk::UniqueDeviceMemory& imageMemory)
+AllocatedImage Engine::CreateImage(uint32_t width, uint32_t height, vk::Format format,
+                                   vk::ImageUsageFlags usage, VmaMemoryUsage memoryUsage)
 {
     vk::ImageCreateInfo imageInfo;
     imageInfo.imageType = vk::ImageType::e2D;
@@ -910,23 +1329,24 @@ void Engine::CreateImage(uint32_t width, uint32_t height, vk::Format format,
     imageInfo.mipLevels = 1;
     imageInfo.arrayLayers = 1;
     imageInfo.format = format;
-    imageInfo.tiling = tiling;
+    imageInfo.tiling = vk::ImageTiling::eOptimal;
     imageInfo.initialLayout = vk::ImageLayout::eUndefined;
     imageInfo.usage = usage;
     imageInfo.samples = vk::SampleCountFlagBits::e1;
     imageInfo.sharingMode = vk::SharingMode::eExclusive;
 
-    image = m_device->createImageUnique(imageInfo);
+    AllocatedImage result;
+    result.allocator = GetVmaAllocator();
+    result.device = *m_device;
 
-    vk::MemoryRequirements memRequirements
-        = m_device->getImageMemoryRequirements(*image);
+    VmaAllocationCreateInfo dimg_allocinfo = {};
+    dimg_allocinfo.usage = memoryUsage;
 
-    vk::MemoryAllocateInfo allocInfo;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = FindMemoryType(memRequirements.memoryTypeBits, properties);
+    VkImageCreateInfo info = imageInfo;
 
-    imageMemory = m_device->allocateMemoryUnique(allocInfo);
-    m_device->bindImageMemory(*image, *imageMemory, 0);
+    vmaCreateImage(GetVmaAllocator(), &info, &dimg_allocinfo,
+                   &result.image, &result.allocation, nullptr);
+    return result;
 }
 
 vk::UniqueImageView Engine::CreateImageView(vk::Image image, vk::Format format,
@@ -948,12 +1368,10 @@ vk::UniqueImageView Engine::CreateImageView(vk::Image image, vk::Format format,
 void Engine::CreateDepthResources()
 {
     vk::Format depthFormat = FindDepthFormat();
-    CreateImage(m_swapChainExtent.width, m_swapChainExtent.height,
-                depthFormat, vk::ImageTiling::eOptimal,
-                vk::ImageUsageFlagBits::eDepthStencilAttachment,
-                vk::MemoryPropertyFlagBits::eDeviceLocal,
-                m_depthImage, m_depthImageMemory);
-    m_depthImageView = CreateImageView(*m_depthImage, depthFormat,
+    m_depthImage = CreateImage(m_swapChainExtent.width, m_swapChainExtent.height,
+                               depthFormat, vk::ImageUsageFlagBits::eDepthStencilAttachment,
+                               VMA_MEMORY_USAGE_GPU_ONLY);
+    m_depthImageView = CreateImageView(m_depthImage.image, depthFormat,
                                        vk::ImageAspectFlagBits::eDepth);
 }
 
@@ -1083,13 +1501,14 @@ void Engine::BeginRenderPass(vk::CommandBuffer cmd)
     auto i = m_currentImageIndex;
     vk::RenderPassBeginInfo renderPassInfo;
     renderPassInfo.renderPass = *m_renderPass;
-    renderPassInfo.framebuffer = *m_swapChainFramebuffers[i];
+    renderPassInfo.framebuffer = *m_sceneFramebuffers[i];
     renderPassInfo.renderArea.offset = vk::Offset2D{0, 0};
     renderPassInfo.renderArea.extent = m_swapChainExtent;
 
     vk::ClearValue clearColor{std::array<float, 4>
                               {0.0f, 0.0f, 0.0f, 1.0f}};
     std::array clearValues {
+        vk::ClearValue(vk::ClearColorValue(std::array{0.0f, 0.f, 0.f, 0.f})),
         vk::ClearValue(vk::ClearColorValue(std::array{0.0f, 0.f, 0.f, 0.f})),
         vk::ClearValue(vk::ClearDepthStencilValue(1.f, 0.f))
     };
@@ -1101,6 +1520,69 @@ void Engine::BeginRenderPass(vk::CommandBuffer cmd)
 
 void Engine::EndRenderPass(vk::CommandBuffer cmd)
 {
+    cmd.endRenderPass();
+
+    auto i = m_currentImageIndex;
+    std::array clearValues {
+        vk::ClearValue(vk::ClearColorValue(std::array{0.0f, 0.f, 0.f, 0.f}))
+    };
+    vk::RenderPassBeginInfo horizontalBloomPassInfo;
+    horizontalBloomPassInfo.renderPass = *m_horizontalBloomRenderPass;
+    horizontalBloomPassInfo.framebuffer = *m_horizontalBloomFramebuffers[i];
+    horizontalBloomPassInfo.renderArea.offset = vk::Offset2D{0, 0};
+    horizontalBloomPassInfo.renderArea.extent = m_swapChainExtent;
+    horizontalBloomPassInfo.setClearValues(clearValues);
+    cmd.beginRenderPass(horizontalBloomPassInfo, vk::SubpassContents::eInline);
+    {
+        TracyVkZone(GetCurrentTracyContext(), cmd, "Bloom horizontal pass");
+
+        cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *m_horizontalBloomPipeline);
+        cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                               *m_horizontalBloomPipelineLayout, 0,
+                               m_horizontalBloomDescriptorSet[i], nullptr);
+
+
+        cmd.draw(3, 1, 0, 0);
+    }
+    cmd.endRenderPass();
+
+    vk::RenderPassBeginInfo verticalBloomPassInfo;
+    verticalBloomPassInfo.renderPass = *m_verticalBloomRenderPass;
+    verticalBloomPassInfo.framebuffer = *m_verticalBloomFramebuffers[i];
+    verticalBloomPassInfo.renderArea.offset = vk::Offset2D{0, 0};
+    verticalBloomPassInfo.renderArea.extent = m_swapChainExtent;
+    verticalBloomPassInfo.setClearValues(clearValues);
+    cmd.beginRenderPass(verticalBloomPassInfo, vk::SubpassContents::eInline);
+    {
+        TracyVkZone(GetCurrentTracyContext(), cmd, "Bloom vertical pass");
+
+        cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *m_verticalBloomPipeline);
+        cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                               *m_verticalBloomPipelineLayout, 0,
+                               m_verticalBloomDescriptorSet[i], nullptr);
+
+        cmd.draw(3, 1, 0, 0);
+    }
+    cmd.endRenderPass();
+
+    vk::RenderPassBeginInfo additivePassInfo;
+    additivePassInfo.renderPass = *m_additivePass;
+    additivePassInfo.framebuffer = *m_swapChainFramebuffers[i];
+    additivePassInfo.renderArea.offset = vk::Offset2D{0, 0};
+    additivePassInfo.renderArea.extent = m_swapChainExtent;
+    additivePassInfo.setClearValues(clearValues);
+    cmd.beginRenderPass(additivePassInfo, vk::SubpassContents::eInline);
+    {
+        TracyVkZone(GetCurrentTracyContext(), cmd, "Additive pass");
+
+        cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *m_additivePipeline);
+        cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                               *m_additivePipelineLayout, 0,
+                               m_additiveDescriptorSet[i], nullptr);
+
+        cmd.draw(3, 1, 0, 0);
+    }
+
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
     cmd.endRenderPass();
 }

@@ -39,6 +39,7 @@ public:
     vk::Queue GetGraphicsQueue() { return m_graphicsQueue; }
     std::size_t GetImageCount() const { return m_swapChainImages.size(); }
     vk::RenderPass GetRenderPass() { return *m_renderPass; }
+    vk::RenderPass GetPresentRenderPass() { return *m_additivePass; }
     vk::Extent2D GetSwapChainExtent() { return m_swapChainExtent; }
     vk::DescriptorSetLayout GetGlobalSetLayout() const { return *m_globalSetLayout; }
     vk::DescriptorSetLayout GetTextureSetLayout() const { return *m_textureSetLayout; }
@@ -132,18 +133,17 @@ public:
             || format == vk::Format::eD24UnormS8Uint;
     }
 
-    void CreateImage(uint32_t width, uint32_t height, vk::Format format,
-                      vk::ImageTiling tiling, vk::ImageUsageFlags usage,
-                      vk::MemoryPropertyFlags properties,
-                      vk::UniqueImage& image,
-                      vk::UniqueDeviceMemory& imageMemory);
+    AllocatedImage CreateImage(uint32_t width, uint32_t height, vk::Format format,
+                               vk::ImageUsageFlags usage, VmaMemoryUsage memoryUsage);
 
     vk::UniqueImageView CreateImageView(vk::Image, vk::Format,
                                         vk::ImageAspectFlags);
 
     vk::UniquePipeline CreateWholeScreenPipeline(vk::ShaderModule vertexModule,
                                                  vk::ShaderModule fragmentModule,
-                                                 vk::PipelineLayout);
+                                                 vk::PipelineLayout, vk::RenderPass,
+                                                 VkBool32 blendEnable = VK_TRUE,
+                                                 int colorAspectsCount = 1);
 
     vk::UniquePipelineLayout CreatePushConstantsLayout(
         const vk::ArrayProxyNoTemporaries<const vk::PushConstantRange>
@@ -186,6 +186,14 @@ private:
     void CreateSwapChain();
     void CreateImageViews();
     void CreateRenderPass();
+    void CreateAdditiveBlendingRenderPass();
+    void CreateBloomFramebuffers();
+    void CreateBloomDescriptorSetLayouts();
+    void CreateBloomDescriptorSets();
+public:
+    void CreateBloomPipelines();
+private:
+    void CreateBloomRenderPasses();
     void CreateFramebuffers();
     void CreateCommandPool();
     void CreateDepthResources();
@@ -196,6 +204,7 @@ private:
     void CreateTextureSetLayout();
     void CreateUniformBuffers();
     void CreateDescriptorPool();
+    void CreateBloomDescriptorPool();
     void CreateDescriptorSets();
     void CreateVmaAllocator();
 
@@ -214,11 +223,14 @@ private:
         CreateImageViews();
         CreateRenderPass();
         CreateDepthResources();
+        CreateAdditiveBlendingRenderPass();
+        CreateBloomRenderPasses();
+        CreateBloomFramebuffers();
+        CreateBloomDescriptorPool();
+        CreateBloomDescriptorSets();
+        CreateBloomPipelines();
         CreateFramebuffers();
-        //CreateUniformBuffers();
         CreateCommandPool();
-        //CreateDescriptorPool();
-        //CreateDescriptorSets();
         CreateCommandBuffers();
 
         for (auto& callback : m_recreateCallbacks)
@@ -251,6 +263,7 @@ private:
     vk::Queue m_graphicsQueue;
     vk::Queue m_presentQueue;
     vk::UniqueSwapchainKHR m_swapChain;
+    vk::Format m_swapChainFormat;
 
     static const unsigned m_max_frames_in_flight = 2;
     std::size_t m_currentFrame = 0;
@@ -265,18 +278,50 @@ private:
     std::vector<vk::Image> m_swapChainImages;
     std::vector<vk::UniqueImageView> m_swapChainImageViews;
     std::vector<vk::UniqueFramebuffer> m_swapChainFramebuffers;
+    std::vector<vk::UniqueFramebuffer> m_sceneFramebuffers;
+    std::vector<AllocatedImage> m_sceneImages;
+    std::vector<vk::UniqueImageView> m_sceneImageViews;
 
-    vk::UniqueImage m_depthImage;
-    vk::UniqueDeviceMemory m_depthImageMemory;
+    AllocatedImage m_depthImage;
     vk::UniqueImageView m_depthImageView;
     vk::Format m_swapChainImageFormat;
     vk::Extent2D m_swapChainExtent;
     vk::UniqueRenderPass m_renderPass;
+
     vk::UniquePipelineLayout m_pipelineLayout;
     vk::UniqueDescriptorPool m_descriptorPool;
+    vk::UniqueDescriptorPool m_bloomDescriptorPool;
     vk::UniqueDescriptorSetLayout m_globalSetLayout;
     vk::UniqueDescriptorSetLayout m_textureSetLayout;
     vk::UniqueDescriptorPool m_imguiDescriptorPool;
+
+    vk::UniqueSampler m_bloomSampler;
+
+    std::vector<AllocatedImage> m_horizontalBloomImages;
+    std::vector<vk::UniqueImageView> m_horizontalBloomImageViews;
+    std::vector<vk::UniqueFramebuffer> m_horizontalBloomFramebuffers;
+    std::vector<vk::DescriptorSet> m_horizontalBloomDescriptorSet;
+    vk::UniqueRenderPass m_horizontalBloomRenderPass;
+    vk::UniquePipeline m_horizontalBloomPipeline;
+    vk::UniquePipelineLayout m_horizontalBloomPipelineLayout;
+    vk::UniqueDescriptorSetLayout m_horizontalDescriptorSetLayout;
+
+    std::vector<AllocatedImage> m_bloomImages;
+    std::vector<vk::UniqueImageView> m_bloomImageViews;
+    std::vector<vk::UniqueFramebuffer> m_verticalBloomFramebuffers;
+    std::vector<vk::DescriptorSet> m_verticalBloomDescriptorSet;
+    vk::UniqueRenderPass m_verticalBloomRenderPass;
+    vk::UniquePipeline m_verticalBloomPipeline;
+    vk::UniquePipelineLayout m_verticalBloomPipelineLayout;
+    vk::UniqueDescriptorSetLayout m_verticalDescriptorSetLayout;
+
+    std::vector<vk::DescriptorSet> m_additiveDescriptorSet;
+    std::vector<vk::UniqueFramebuffer> m_additiveFramebuffers;
+    vk::UniqueRenderPass m_additivePass;
+    vk::UniquePipeline m_additivePipeline;
+    vk::UniqueDescriptorSetLayout m_additiveDescriptorSetLayout;
+    vk::UniquePipelineLayout m_additivePipelineLayout;
+
 #ifdef NDEBUG
     bool m_validationLayers = false;
 #else

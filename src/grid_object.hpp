@@ -66,7 +66,8 @@ private:
             );
 
         m_pipelineLayout = engine.CreatePushConstantsLayout(range);
-        m_pipeline = engine.CreateWholeScreenPipeline(*whole, *grid, *m_pipelineLayout);
+        m_pipeline = engine.CreateWholeScreenPipeline(*whole, *grid, *m_pipelineLayout, engine.GetRenderPass(),
+                                                      VK_TRUE, 2);
     }
 
     vk::UniquePipeline m_pipeline;

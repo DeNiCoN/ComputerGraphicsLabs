@@ -496,23 +496,34 @@ Material::Ptr MaterialManager::Create(
     multisamplingInfo.sampleShadingEnable = VK_FALSE;
     multisamplingInfo.rasterizationSamples = vk::SampleCountFlagBits::e1;
 
-    vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
-    colorBlendAttachment.colorWriteMask =
+    std::array<vk::PipelineColorBlendAttachmentState, 2> colorBlendAttachments;
+    colorBlendAttachments[0].colorWriteMask =
         vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
         vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
 
-    colorBlendAttachment.blendEnable = VK_TRUE;
-    colorBlendAttachment.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
-    colorBlendAttachment.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
-    colorBlendAttachment.colorBlendOp = vk::BlendOp::eAdd;
-    colorBlendAttachment.srcAlphaBlendFactor = vk::BlendFactor::eOne;
-    colorBlendAttachment.dstAlphaBlendFactor = vk::BlendFactor::eZero;
-    colorBlendAttachment.alphaBlendOp = vk::BlendOp::eAdd;
+    colorBlendAttachments[0].blendEnable = VK_TRUE;
+    colorBlendAttachments[0].srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
+    colorBlendAttachments[0].dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+    colorBlendAttachments[0].colorBlendOp = vk::BlendOp::eAdd;
+    colorBlendAttachments[0].srcAlphaBlendFactor = vk::BlendFactor::eOne;
+    colorBlendAttachments[0].dstAlphaBlendFactor = vk::BlendFactor::eZero;
+    colorBlendAttachments[0].alphaBlendOp = vk::BlendOp::eAdd;
+
+    colorBlendAttachments[1].colorWriteMask =
+        vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+        vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
+
+    colorBlendAttachments[1].blendEnable = VK_TRUE;
+    colorBlendAttachments[1].srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
+    colorBlendAttachments[1].dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+    colorBlendAttachments[1].colorBlendOp = vk::BlendOp::eAdd;
+    colorBlendAttachments[1].srcAlphaBlendFactor = vk::BlendFactor::eOne;
+    colorBlendAttachments[1].dstAlphaBlendFactor = vk::BlendFactor::eZero;
+    colorBlendAttachments[1].alphaBlendOp = vk::BlendOp::eAdd;
 
     vk::PipelineColorBlendStateCreateInfo colorBlendingInfo;
     colorBlendingInfo.logicOpEnable = VK_FALSE;
-    colorBlendingInfo.attachmentCount = 1;
-    colorBlendingInfo.pAttachments = &colorBlendAttachment;
+    colorBlendingInfo.setAttachments(colorBlendAttachments);
 
     vk::PipelineDepthStencilStateCreateInfo depthStencil;
     depthStencil.depthTestEnable = VK_TRUE;
