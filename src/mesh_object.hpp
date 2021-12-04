@@ -46,6 +46,8 @@ public:
 
     glm::vec3 mesh_center = {0, 0, 0};
 
+    Mesh::Ptr GetMesh() const { return m_mesh; }
+
 private:
     MeshRenderer& m_renderer;
     Mesh::Ptr m_mesh;

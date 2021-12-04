@@ -354,7 +354,13 @@ Mesh::Ptr MeshManager::NewFromObj(const std::string &name, const std::filesystem
             indices.push_back(uniqueVertices[vertex]);
         }
     }
+    return NewFromVertices(name, std::move(vertices), std::move(indices));
+}
 
+Mesh::Ptr MeshManager::NewFromVertices(const std::string& name,
+                                       std::vector<Vertex> vertices,
+                                       std::vector<uint32_t> indices)
+{
     std::vector<glm::vec3> tan1(vertices.size());
     std::ranges::fill(tan1, glm::vec3(0));
     std::vector<glm::vec3> tan2(vertices.size());
@@ -415,13 +421,33 @@ Mesh::Ptr MeshManager::NewFromObj(const std::string &name, const std::filesystem
             (glm::dot(glm::cross(n, t), tan2[a]) < 0.0F) ? -1.0F : 1.0F;
     }
 
-    return NewFromVertices(name, std::move(vertices), std::move(indices));
-}
+    float area_sum=0.0;
+    glm::vec3 centroid = glm::vec3(0.0,0.0,0.0);
+    for(unsigned int i = 0; i < indices.size(); i += 3)
+    {
+        auto& vertex0 = vertices[indices[i]];
+        auto& vertex1 = vertices[indices[i + 1]];
+        auto& vertex2 = vertices[indices[i + 2]];
 
-Mesh::Ptr MeshManager::NewFromVertices(const std::string& name,
-                                       std::vector<Vertex> vertices,
-                                       std::vector<uint32_t> indices)
-{
+        glm::vec3 v1 = vertex0.position;
+        glm::vec3 v2 = vertex1.position;
+        glm::vec3 v3 = vertex2.position;
+
+        glm::vec3 center = (v1+v2+v3) / 3.f;
+        float area = 0.5 * glm::length(glm::cross(v2-v1, v3-v1));
+        centroid += area*center;
+        area_sum += area;
+    }
+    centroid /= area_sum;
+
+    glm::vec3 min = vertices.front().position;
+    glm::vec3 max = vertices.front().position;
+    for (const auto& vert : vertices)
+    {
+        min = glm::min(min, vert.position);
+        max = glm::max(max, vert.position);
+    }
+
     Mesh::Ptr result = std::make_shared<Mesh>();
 
     result->vertexBuffer =
@@ -431,6 +457,10 @@ Mesh::Ptr MeshManager::NewFromVertices(const std::string& name,
     result->indexBuffer =
         m_engine.CopyToGPU(indices, vk::BufferUsageFlagBits::eIndexBuffer);
     result->indices = std::move(indices);
+
+    result->surfaceCenter = centroid;
+    result->min = centroid;
+    result->max = centroid;
 
     m_meshes[name] = result;
 

@@ -126,7 +126,7 @@ void main()
         vec3 L = normalize(lightPositions[i] - WorldPos);
         vec3 H = normalize(V + L);
         float distance = length(lightPositions[i] - WorldPos);
-        float attenuation = 1.0 / (distance * distance);
+        float attenuation = 1;
         vec3 radiance = lightColors[i] * attenuation;
 
         // Cook-Torrance BRDF
@@ -165,11 +165,10 @@ void main()
     color = color / (color + vec3(1.0));
     // gamma correct
     color = pow(color, vec3(1.0/2.2));
-
     FragColor = vec4(color, 1.0);
 
-    float brightness = dot(vec3(FragColor), vec3(0.2126, 0.7152, 0.0722));
-    if (brightness > 1.0) {
+    float brightness = dot(vec3(color), vec3(0.2126, 0.7152, 0.0722));
+    if (brightness > 0.5) {
         BrightColor = FragColor;
     } else {
         BrightColor = vec4(0.0, 0.0, 0.0, 1);

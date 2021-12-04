@@ -328,7 +328,7 @@ void Editor::InitDefaultObjects()
             m_texture_manager.Get("paper_ao")
             ),
         m_material_manager);
-    paper->mesh_center = {0, 0.05, 0};
+    paper->mesh_center = paper->GetMesh()->surfaceCenter;
     paper->scale = 10;
 
     m_objects.Add("Paper", paper);
@@ -352,7 +352,7 @@ void Editor::InitDefaultObjects()
             nullptr
             ),
         m_material_manager);
-    sun->mesh_center = {1, 1, 1};
+    sun->mesh_center = sun->GetMesh()->surfaceCenter;
     m_objects.Add("Sun", sun);
 
     auto flintlock = std::make_shared<MeshObject>(
@@ -368,7 +368,7 @@ void Editor::InitDefaultObjects()
             ),
         m_material_manager);
     flintlock->scale = 10;
-    flintlock->mesh_center = {0, 0.01, 0};
+    flintlock->mesh_center = flintlock->GetMesh()->surfaceCenter;
     m_objects.Add("Flintlock", flintlock);
     m_orbit.push_back({
             .object = flintlock,
@@ -391,7 +391,7 @@ void Editor::InitDefaultObjects()
             ),
         m_material_manager);
     lemon->scale = 10;
-    lemon->mesh_center = {0, 0.025, 0};
+    lemon->mesh_center = lemon->GetMesh()->surfaceCenter;
     m_objects.Add("Lemon", lemon);
     m_orbit.push_back({
             .object = lemon,
@@ -414,7 +414,7 @@ void Editor::InitDefaultObjects()
             ),
         m_material_manager);
     orange->scale = 10;
-    orange->mesh_center = {0, 0.03, 0};
+    orange->mesh_center = orange->GetMesh()->surfaceCenter;
     m_objects.Add("Orange", orange);
     m_orbit.push_back({
             .object = orange,
@@ -437,7 +437,7 @@ void Editor::InitDefaultObjects()
             ),
         m_material_manager);
     pot->scale = 0.001;
-    pot->mesh_center = {0, 10, 0};
+    pot->mesh_center = pot->GetMesh()->surfaceCenter;
 
     m_objects.Add("Pot", pot);
     m_orbit.push_back({
@@ -461,7 +461,7 @@ void Editor::InitDefaultObjects()
             ),
         m_material_manager);
     cherry->scale = 0.001;
-    cherry->mesh_center = {300, 300, 300};
+    cherry->mesh_center = cherry->GetMesh()->surfaceCenter;
     m_orbit.push_back({
             .object = cherry,
             .center = {0, 0, 0},

@@ -122,6 +122,9 @@ struct Mesh
     AllocatedBuffer indexBuffer;
     std::vector<uint32_t> indices;
     std::vector<Vertex> vertices;
+    glm::vec3 surfaceCenter;
+    glm::vec3 min;
+    glm::vec3 max;
 };
 
 class MeshManager
